@@ -47,3 +47,56 @@ export interface PlatformMetrics {
   gross_merchandise_value: number;
   active_kds_screens: number;
 }
+
+export interface RestaurantOrderItem {
+  name: string;
+  quantity: number;
+  price: number;
+}
+
+export interface RestaurantOrder {
+  id: string;
+  restaurant_id: string;
+  order_number: string;
+  table_number: number;
+  customer_name: string;
+  items: RestaurantOrderItem[];
+  total: number;
+  status: "new" | "preparing" | "ready" | "served" | "paid";
+  created_at: string;
+  payment_method?: "UPI" | "Card" | "Cash";
+}
+
+export interface RestaurantTable {
+  id: string;
+  restaurant_id: string;
+  table_number: number;
+  capacity: number;
+  status: "available" | "occupied" | "reserved";
+  guests_count?: number;
+  current_order_id?: string;
+  occupied_since?: string;
+}
+
+export interface RestaurantMenuItem {
+  id: string;
+  restaurant_id: string;
+  name: string;
+  category: "Starters" | "Biryanis & Rice" | "Main Curries" | "Breads" | "Desserts" | "Beverages";
+  price: number;
+  is_available: boolean;
+  description: string;
+  dietary?: "veg" | "non-veg";
+}
+
+export interface UserSession {
+  role: "SUPER_ADMIN" | "RESTAURANT_ADMIN";
+  name: string;
+  email: string;
+  adminId?: string;
+  restaurantId?: string;
+  restaurantName?: string;
+  adminRole?: AdminRole;
+  isSuperAdminPreview?: boolean;
+  loginTime: string;
+}

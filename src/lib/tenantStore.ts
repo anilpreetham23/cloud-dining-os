@@ -1,6 +1,14 @@
 "use client";
 
-import { TenantRestaurant, AdminAccount, PlatformMetrics } from "./types";
+import {
+  TenantRestaurant,
+  AdminAccount,
+  PlatformMetrics,
+  UserSession,
+  RestaurantOrder,
+  RestaurantTable,
+  RestaurantMenuItem,
+} from "./types";
 import { supabase } from "./supabase";
 
 const TENANTS_STORAGE_KEY = "restocloud_tenants_v1";
@@ -424,19 +432,399 @@ export function getPlatformMetrics(tenants: TenantRestaurant[], admins: AdminAcc
   };
 }
 
-export function formatCredentialVoucher(admin: AdminAccount, backofficeUrl: string): string {
-  return `========================================
-🏢 RESTAURANT CLOUD OS — ADMIN ACCESS VOUCHER
-========================================
+export function formatCredentialVoucher(admin: AdminAccount, customUrl?: string): string {
+  const loginUrl = customUrl || "https://cloud-dining-os.vercel.app/login";
+  return `======================================================
+🍽️ CLOUDDINING OS — RESTAURANT ACCESS PASS
+======================================================
 Restaurant: ${admin.restaurant_name}
-Assigned Admin: ${admin.name}
-Role: ${admin.role.toUpperCase()} (Full Back-Office & KDS Access)
-Login Email: ${admin.email}
+Assigned Seat: ${admin.name}
+Role: ${admin.role.toUpperCase()} (Full Back-Office & Kitchen KDS Access)
+
+👉 Direct Partner Login Link:
+${loginUrl}
+
+🔑 Login Credentials:
+Email / Username: ${admin.email}
 Temporary Password: ${admin.password}
 
-👉 Direct Back-Office Access Link:
-${backofficeUrl}
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+📌 Getting Started:
+1. Open the login link above in your browser.
+2. Sign in with your assigned email and password.
+3. Access your Live Table Floor, Kitchen KDS, and Menu.
+4. For security, update your password after your first login.
 
-Please sign in and change your password upon initial setup.
-========================================`;
+Issued by: Bobby (Platform Super Admin)
+Platform Support: support@clouddining.com
+======================================================`;
 }
+
+// ----------------------------------------------------
+// SESSION & AUTHENTICATION MANAGEMENT
+// ----------------------------------------------------
+const SESSION_KEY = "clouddining_active_session";
+
+export function getActiveSession(): UserSession | null {
+  if (typeof window === "undefined") return null;
+  try {
+    const raw = localStorage.getItem(SESSION_KEY);
+    if (!raw) return null;
+    return JSON.parse(raw);
+  } catch {
+    return null;
+  }
+}
+
+export function setActiveSession(session: UserSession): void {
+  if (typeof window === "undefined") return;
+  try {
+    localStorage.setItem(SESSION_KEY, JSON.stringify(session));
+  } catch (e) {
+    console.error("Failed to save session", e);
+  }
+}
+
+export function clearActiveSession(): void {
+  if (typeof window === "undefined") return;
+  try {
+    localStorage.removeItem(SESSION_KEY);
+  } catch {}
+}
+
+export function authenticateUser(
+  emailInput: string,
+  passInput: string
+): { success: boolean; session?: UserSession; error?: string } {
+  const cleanEmail = emailInput.trim().toLowerCase();
+  const cleanPass = passInput.trim();
+
+  // 1. Check Super Admin (Bobby)
+  const superAdminEmails = [
+    "bobby@clouddining.com",
+    "bobby@gmail.com",
+    "superadmin@clouddining.com",
+    "superadmin@restocloud.com",
+    "admin@clouddining.com",
+  ];
+
+  if (superAdminEmails.includes(cleanEmail) && cleanPass === "SuperAdmin2026") {
+    const session: UserSession = {
+      role: "SUPER_ADMIN",
+      name: "Bobby (Platform Head)",
+      email: cleanEmail,
+      loginTime: new Date().toISOString(),
+    };
+    setActiveSession(session);
+    return { success: true, session };
+  }
+
+  // 2. Check Restaurant Admins
+  const allAdmins = getStoredAdmins();
+  const matchedAdmin = allAdmins.find((a) => a.email.toLowerCase() === cleanEmail);
+
+  if (matchedAdmin) {
+    if (matchedAdmin.status === "inactive") {
+      return {
+        success: false,
+        error: "This restaurant admin account is currently paused. Please contact Bobby (Super Admin).",
+      };
+    }
+
+    if (matchedAdmin.password === cleanPass) {
+      const session: UserSession = {
+        role: "RESTAURANT_ADMIN",
+        name: matchedAdmin.name,
+        email: matchedAdmin.email,
+        adminId: matchedAdmin.id,
+        restaurantId: matchedAdmin.restaurant_id,
+        restaurantName: matchedAdmin.restaurant_name,
+        adminRole: matchedAdmin.role,
+        loginTime: new Date().toISOString(),
+      };
+      setActiveSession(session);
+      return { success: true, session };
+    } else {
+      return {
+        success: false,
+        error: "Incorrect password for this restaurant account. Please check your access voucher.",
+      };
+    }
+  }
+
+  return {
+    success: false,
+    error: "No account found matching this email. Please check your spelling or contact Bobby (Super Admin).",
+  };
+}
+
+// ----------------------------------------------------
+// RESTAURANT PORTAL SAMPLE DATA & LIVE CONTROLS
+// ----------------------------------------------------
+const ORDERS_STORAGE_KEY = "clouddining_orders_v1";
+const TABLES_STORAGE_KEY = "clouddining_tables_v1";
+const MENUS_STORAGE_KEY = "clouddining_menus_v1";
+
+const DEFAULT_ORDERS: RestaurantOrder[] = [
+  {
+    id: "ord-101",
+    restaurant_id: "2d708951-bb5f-4bbc-92f6-f4ac6dc7fcb3", // Sri Divya
+    order_number: "SD-101",
+    table_number: 4,
+    customer_name: "Ramesh Naidu",
+    items: [
+      { name: "Rayalaseema Ragi Sangati with Natukodi Pulusu", quantity: 2, price: 420 },
+      { name: "Gongura Mutton Biryani", quantity: 1, price: 480 },
+      { name: "Sweet Lassi", quantity: 2, price: 90 },
+    ],
+    total: 1500,
+    status: "preparing",
+    created_at: "10 mins ago",
+    payment_method: "UPI",
+  },
+  {
+    id: "ord-102",
+    restaurant_id: "2d708951-bb5f-4bbc-92f6-f4ac6dc7fcb3",
+    order_number: "SD-102",
+    table_number: 7,
+    customer_name: "Sneha Reddy",
+    items: [
+      { name: "Kurnool Ulavacharu Chicken Biryani", quantity: 2, price: 390 },
+      { name: "Apollo Fish Fry", quantity: 1, price: 360 },
+      { name: "Fresh Lime Soda", quantity: 2, price: 70 },
+    ],
+    total: 1280,
+    status: "new",
+    created_at: "3 mins ago",
+    payment_method: "UPI",
+  },
+  {
+    id: "ord-103",
+    restaurant_id: "2d708951-bb5f-4bbc-92f6-f4ac6dc7fcb3",
+    order_number: "SD-099",
+    table_number: 2,
+    customer_name: "Venkat Rao",
+    items: [
+      { name: "Nellore Chepala Pulusu", quantity: 1, price: 440 },
+      { name: "Steamed Ponni Rice", quantity: 2, price: 120 },
+      { name: "Curd Rice & Pickle", quantity: 1, price: 140 },
+    ],
+    total: 820,
+    status: "ready",
+    created_at: "22 mins ago",
+    payment_method: "Cash",
+  },
+  {
+    id: "ord-201",
+    restaurant_id: "a1b2c3d4-e5f6-7890-abcd-ef1234567890", // Hyderabad Chefs
+    order_number: "HC-405",
+    table_number: 12,
+    customer_name: "Mohammed Farooq",
+    items: [
+      { name: "Special Mutton Dum Biryani (Zafrani)", quantity: 2, price: 540 },
+      { name: "Shahi Nizami Handi Paneer", quantity: 1, price: 380 },
+      { name: "Rumali Roti (4 pcs)", quantity: 1, price: 160 },
+      { name: "Double Ka Meetha", quantity: 2, price: 140 },
+    ],
+    total: 1900,
+    status: "preparing",
+    created_at: "14 mins ago",
+    payment_method: "Card",
+  },
+];
+
+const DEFAULT_TABLES: RestaurantTable[] = [
+  { id: "tbl-1", restaurant_id: "2d708951-bb5f-4bbc-92f6-f4ac6dc7fcb3", table_number: 1, capacity: 2, status: "available" },
+  { id: "tbl-2", restaurant_id: "2d708951-bb5f-4bbc-92f6-f4ac6dc7fcb3", table_number: 2, capacity: 4, status: "occupied", guests_count: 3, current_order_id: "ord-103", occupied_since: "25m ago" },
+  { id: "tbl-3", restaurant_id: "2d708951-bb5f-4bbc-92f6-f4ac6dc7fcb3", table_number: 3, capacity: 4, status: "available" },
+  { id: "tbl-4", restaurant_id: "2d708951-bb5f-4bbc-92f6-f4ac6dc7fcb3", table_number: 4, capacity: 6, status: "occupied", guests_count: 5, current_order_id: "ord-101", occupied_since: "15m ago" },
+  { id: "tbl-5", restaurant_id: "2d708951-bb5f-4bbc-92f6-f4ac6dc7fcb3", table_number: 5, capacity: 2, status: "reserved", guests_count: 2 },
+  { id: "tbl-6", restaurant_id: "2d708951-bb5f-4bbc-92f6-f4ac6dc7fcb3", table_number: 6, capacity: 4, status: "available" },
+  { id: "tbl-7", restaurant_id: "2d708951-bb5f-4bbc-92f6-f4ac6dc7fcb3", table_number: 7, capacity: 8, status: "occupied", guests_count: 6, current_order_id: "ord-102", occupied_since: "5m ago" },
+  { id: "tbl-8", restaurant_id: "2d708951-bb5f-4bbc-92f6-f4ac6dc7fcb3", table_number: 8, capacity: 4, status: "available" },
+];
+
+const DEFAULT_MENU_ITEMS: RestaurantMenuItem[] = [
+  {
+    id: "menu-1",
+    restaurant_id: "2d708951-bb5f-4bbc-92f6-f4ac6dc7fcb3",
+    name: "Rayalaseema Ragi Sangati with Natukodi Pulusu",
+    category: "Main Curries",
+    price: 420,
+    is_available: true,
+    description: "Country chicken cooked in stone-ground spicy gravy served with wholesome hot ragi mudda and pure ghee.",
+    dietary: "non-veg",
+  },
+  {
+    id: "menu-2",
+    restaurant_id: "2d708951-bb5f-4bbc-92f6-f4ac6dc7fcb3",
+    name: "Gongura Mutton Biryani",
+    category: "Biryanis & Rice",
+    price: 480,
+    is_available: true,
+    description: "Tender goat pieces infused with tangy gongura leaves and aged aromatic basmati rice.",
+    dietary: "non-veg",
+  },
+  {
+    id: "menu-3",
+    restaurant_id: "2d708951-bb5f-4bbc-92f6-f4ac6dc7fcb3",
+    name: "Apollo Fish Fry",
+    category: "Starters",
+    price: 360,
+    is_available: true,
+    description: "Crispy battered murrel fillets tossed with curry leaves, cracked red chilies, and tangy house masala.",
+    dietary: "non-veg",
+  },
+  {
+    id: "menu-4",
+    restaurant_id: "2d708951-bb5f-4bbc-92f6-f4ac6dc7fcb3",
+    name: "Nellore Chepala Pulusu",
+    category: "Main Curries",
+    price: 440,
+    is_available: true,
+    description: "Heritage coastal tamarind fish curry slow-simmered in earthen clay pot with shallots and fenugreek.",
+    dietary: "non-veg",
+  },
+  {
+    id: "menu-5",
+    restaurant_id: "2d708951-bb5f-4bbc-92f6-f4ac6dc7fcb3",
+    name: "Kurnool Ulavacharu Chicken Biryani",
+    category: "Biryanis & Rice",
+    price: 390,
+    is_available: true,
+    description: "Slow-reduced horsegram soup layered with spiced chicken and fragrant basmati dum rice.",
+    dietary: "non-veg",
+  },
+  {
+    id: "menu-6",
+    restaurant_id: "2d708951-bb5f-4bbc-92f6-f4ac6dc7fcb3",
+    name: "Paneer Butter Masala",
+    category: "Main Curries",
+    price: 320,
+    is_available: true,
+    description: "Fresh cottage cheese cubes simmered in velvety tomato cashew gravy with fenugreek butter.",
+    dietary: "veg",
+  },
+  {
+    id: "menu-7",
+    restaurant_id: "2d708951-bb5f-4bbc-92f6-f4ac6dc7fcb3",
+    name: "Butter Garlic Naan",
+    category: "Breads",
+    price: 75,
+    is_available: true,
+    description: "Clay-oven baked leavened bread brushed with melted butter and roasted garlic flakes.",
+    dietary: "veg",
+  },
+  {
+    id: "menu-8",
+    restaurant_id: "2d708951-bb5f-4bbc-92f6-f4ac6dc7fcb3",
+    name: "Apricot Delight with Vanilla Gelato",
+    category: "Desserts",
+    price: 180,
+    is_available: true,
+    description: "Rich stewed Turkish apricots layered with sponge cake, whipped cream, and vanilla scoop.",
+    dietary: "veg",
+  },
+];
+
+export function getRestaurantOrders(restaurantId: string): RestaurantOrder[] {
+  if (typeof window === "undefined") return DEFAULT_ORDERS.filter((o) => o.restaurant_id === restaurantId);
+  try {
+    const raw = localStorage.getItem(ORDERS_STORAGE_KEY);
+    const orders: RestaurantOrder[] = raw ? JSON.parse(raw) : DEFAULT_ORDERS;
+    return orders.filter((o) => o.restaurant_id === restaurantId);
+  } catch {
+    return DEFAULT_ORDERS.filter((o) => o.restaurant_id === restaurantId);
+  }
+}
+
+export function updateOrderStatus(orderId: string, newStatus: RestaurantOrder["status"]): void {
+  if (typeof window === "undefined") return;
+  try {
+    const raw = localStorage.getItem(ORDERS_STORAGE_KEY);
+    const orders: RestaurantOrder[] = raw ? JSON.parse(raw) : DEFAULT_ORDERS;
+    const updated = orders.map((o) => (o.id === orderId ? { ...o, status: newStatus } : o));
+    localStorage.setItem(ORDERS_STORAGE_KEY, JSON.stringify(updated));
+  } catch (e) {
+    console.error("Failed to update order status", e);
+  }
+}
+
+export function getRestaurantTables(restaurantId: string): RestaurantTable[] {
+  if (typeof window === "undefined") return DEFAULT_TABLES.filter((t) => t.restaurant_id === restaurantId);
+  try {
+    const raw = localStorage.getItem(TABLES_STORAGE_KEY);
+    const tables: RestaurantTable[] = raw ? JSON.parse(raw) : DEFAULT_TABLES;
+    const list = tables.filter((t) => t.restaurant_id === restaurantId);
+    if (list.length === 0) {
+      // Generate default 8 tables for newly onboarded restaurant
+      return Array.from({ length: 8 }, (_, i) => ({
+        id: `tbl-${restaurantId}-${i + 1}`,
+        restaurant_id: restaurantId,
+        table_number: i + 1,
+        capacity: (i % 3 + 1) * 2,
+        status: i === 1 ? "occupied" : i === 4 ? "reserved" : "available",
+      }));
+    }
+    return list;
+  } catch {
+    return DEFAULT_TABLES.filter((t) => t.restaurant_id === restaurantId);
+  }
+}
+
+export function updateTableStatus(tableId: string, newStatus: RestaurantTable["status"]): void {
+  if (typeof window === "undefined") return;
+  try {
+    const raw = localStorage.getItem(TABLES_STORAGE_KEY);
+    const tables: RestaurantTable[] = raw ? JSON.parse(raw) : DEFAULT_TABLES;
+    const updated = tables.map((t) => (t.id === tableId ? { ...t, status: newStatus } : t));
+    localStorage.setItem(TABLES_STORAGE_KEY, JSON.stringify(updated));
+  } catch (e) {
+    console.error("Failed to update table status", e);
+  }
+}
+
+export function getRestaurantMenu(restaurantId: string): RestaurantMenuItem[] {
+  if (typeof window === "undefined") return DEFAULT_MENU_ITEMS.filter((m) => m.restaurant_id === restaurantId);
+  try {
+    const raw = localStorage.getItem(MENUS_STORAGE_KEY);
+    const items: RestaurantMenuItem[] = raw ? JSON.parse(raw) : DEFAULT_MENU_ITEMS;
+    const list = items.filter((m) => m.restaurant_id === restaurantId);
+    if (list.length === 0) {
+      // Fallback sample items for newly onboarded restaurant
+      return DEFAULT_MENU_ITEMS.map((item, idx) => ({
+        ...item,
+        id: `menu-${restaurantId}-${idx + 1}`,
+        restaurant_id: restaurantId,
+      }));
+    }
+    return list;
+  } catch {
+    return DEFAULT_MENU_ITEMS.filter((m) => m.restaurant_id === restaurantId);
+  }
+}
+
+export function toggleMenuItemAvailability(itemId: string): void {
+  if (typeof window === "undefined") return;
+  try {
+    const raw = localStorage.getItem(MENUS_STORAGE_KEY);
+    const items: RestaurantMenuItem[] = raw ? JSON.parse(raw) : DEFAULT_MENU_ITEMS;
+    const updated = items.map((m) => (m.id === itemId ? { ...m, is_available: !m.is_available } : m));
+    localStorage.setItem(MENUS_STORAGE_KEY, JSON.stringify(updated));
+  } catch (e) {
+    console.error("Failed to toggle menu item", e);
+  }
+}
+
+export function updateMenuItemPrice(itemId: string, newPrice: number): void {
+  if (typeof window === "undefined") return;
+  try {
+    const raw = localStorage.getItem(MENUS_STORAGE_KEY);
+    const items: RestaurantMenuItem[] = raw ? JSON.parse(raw) : DEFAULT_MENU_ITEMS;
+    const updated = items.map((m) => (m.id === itemId ? { ...m, price: newPrice } : m));
+    localStorage.setItem(MENUS_STORAGE_KEY, JSON.stringify(updated));
+  } catch (e) {
+    console.error("Failed to update price", e);
+  }
+}
+

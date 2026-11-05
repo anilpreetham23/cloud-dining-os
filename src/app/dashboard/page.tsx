@@ -39,6 +39,7 @@ import {
   PlatformMetrics,
   SubscriptionTier,
   AdminRole,
+  UserSession,
 } from "@/lib/types";
 
 import {
@@ -51,6 +52,7 @@ import {
   toggleAdminStatus,
   getPlatformMetrics,
   formatCredentialVoucher,
+  setActiveSession,
 } from "@/lib/tenantStore";
 
 export default function SuperAdminDashboardPage() {
@@ -184,9 +186,7 @@ export default function SuperAdminDashboardPage() {
     if (res.ok) {
       setOnboardSuccess(`Successfully onboarded "${res.tenant.name}" with primary admin ${res.admin.email}!`);
       refreshData();
-      const backofficeUrl = process.env.NEXT_PUBLIC_RESTAURANT_PLATFORM_URL
-        ? `${process.env.NEXT_PUBLIC_RESTAURANT_PLATFORM_URL}/admin`
-        : "https://lumiere-restaurant-platform.vercel.app/admin";
+      const backofficeUrl = "https://cloud-dining-os.vercel.app/login";
       setVoucherModalData({
         admin: res.admin,
         voucherText: formatCredentialVoucher(res.admin, backofficeUrl),
@@ -225,9 +225,7 @@ export default function SuperAdminDashboardPage() {
     if (res.ok) {
       setAddAdminSuccess(`Admin account created for ${res.admin.email}!`);
       refreshData();
-      const backofficeUrl = process.env.NEXT_PUBLIC_RESTAURANT_PLATFORM_URL
-        ? `${process.env.NEXT_PUBLIC_RESTAURANT_PLATFORM_URL}/admin`
-        : "https://lumiere-restaurant-platform.vercel.app/admin";
+      const backofficeUrl = "https://cloud-dining-os.vercel.app/login";
       setVoucherModalData({
         admin: res.admin,
         voucherText: formatCredentialVoucher(res.admin, backofficeUrl),
@@ -247,9 +245,21 @@ export default function SuperAdminDashboardPage() {
     setTimeout(() => setCopiedVoucher(false), 2500);
   };
 
-  const backofficeBaseUrl = process.env.NEXT_PUBLIC_RESTAURANT_PLATFORM_URL
-    ? `${process.env.NEXT_PUBLIC_RESTAURANT_PLATFORM_URL}/admin`
-    : "https://lumiere-restaurant-platform.vercel.app/admin";
+  const backofficeBaseUrl = "https://cloud-dining-os.vercel.app/login";
+
+  const handleEnterConsole = (tenant: TenantRestaurant) => {
+    const previewSession: UserSession = {
+      role: "RESTAURANT_ADMIN",
+      name: `Bobby (Previewing as Admin)`,
+      email: "bobby@clouddining.com",
+      restaurantId: tenant.id,
+      restaurantName: tenant.name,
+      isSuperAdminPreview: true,
+      loginTime: new Date().toISOString(),
+    };
+    setActiveSession(previewSession);
+    router.push("/portal");
+  };
 
   return (
     <div className="min-h-screen bg-[#040814] text-slate-100 flex flex-col font-sans">
@@ -272,8 +282,13 @@ export default function SuperAdminDashboardPage() {
                   Super Admin Console
                 </span>
               </div>
-              <div className="text-[11px] text-slate-400">
-                Master Restaurant Network & Tenant Credential Command Center
+              <div className="flex items-center gap-2 text-[11px] text-slate-400">
+                <span className="text-amber-300 font-semibold flex items-center gap-1">
+                  <Sparkles className="w-3 h-3 text-amber-400" />
+                  Platform Head: Bobby
+                </span>
+                <span>•</span>
+                <span>Master Multi-Tenant Credential Hub</span>
               </div>
             </div>
           </div>
@@ -503,16 +518,15 @@ export default function SuperAdminDashboardPage() {
                       <span>Manage Logins</span>
                     </button>
 
-                    <a
-                      href={backofficeBaseUrl}
-                      target="_blank"
-                      rel="noreferrer"
-                      title={`Launch ${t.name} Back-Office`}
-                      className="py-2.5 px-3 rounded-xl text-xs font-bold bg-amber-400/10 hover:bg-amber-400/20 text-amber-300 border border-amber-400/30 flex items-center justify-center gap-1.5 transition-all"
+                    <button
+                      type="button"
+                      onClick={() => handleEnterConsole(t)}
+                      title={`Open ${t.name} Live Console`}
+                      className="py-2.5 px-3 rounded-xl text-xs font-bold bg-amber-400/10 hover:bg-amber-400/20 text-amber-300 border border-amber-400/30 flex items-center justify-center gap-1.5 transition-all cursor-pointer"
                     >
-                      <span>Launch</span>
+                      <span>Live Console</span>
                       <ExternalLink className="w-3.5 h-3.5" />
-                    </a>
+                    </button>
                   </div>
                 </div>
               ))}
@@ -1007,6 +1021,17 @@ export default function SuperAdminDashboardPage() {
                   </>
                 )}
               </button>
+
+              <a
+                href={`https://wa.me/?text=${encodeURIComponent(voucherModalData.voucherText)}`}
+                target="_blank"
+                rel="noreferrer"
+                className="w-full py-3 px-4 rounded-xl text-xs font-bold bg-emerald-600 hover:bg-emerald-500 text-white flex items-center justify-center gap-2 shadow-lg transition-all cursor-pointer"
+              >
+                <span>Direct Share on WhatsApp</span>
+                <ExternalLink className="w-3.5 h-3.5" />
+              </a>
+
               <p className="text-[11px] text-center text-slate-500">
                 Clicking copy formats a clean message ready to paste directly into WhatsApp or email.
               </p>
