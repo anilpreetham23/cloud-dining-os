@@ -69,6 +69,11 @@ export interface RestaurantOrder {
   table_number: number;
   floor?: string;
   customer_name: string;
+  customer_phone?: string;
+  order_type?: "dine_in" | "takeaway";
+  source?: "qr_scan" | "customer_portal" | "pos";
+  notes?: string;
+  estimated_pickup_minutes?: number;
   items: RestaurantOrderItem[];
   total: number;
   status: "new" | "preparing" | "ready" | "served" | "paid";

@@ -805,6 +805,33 @@ export function getRestaurantOrders(restaurantId: string): RestaurantOrder[] {
   }
 }
 
+export async function syncCloudOrders(restaurantId: string): Promise<RestaurantOrder[]> {
+  try {
+    const res = await fetch(`/api/orders?restaurant_id=${encodeURIComponent(restaurantId)}`);
+    if (res.ok) {
+      const data = await res.json();
+      if (data.success && Array.isArray(data.orders)) {
+        const cloudOrders: RestaurantOrder[] = data.orders;
+        if (typeof window !== "undefined") {
+          const raw = localStorage.getItem(ORDERS_STORAGE_KEY);
+          const localOrders: RestaurantOrder[] = raw ? JSON.parse(raw) : DEFAULT_ORDERS;
+          const map = new Map<string, RestaurantOrder>();
+          cloudOrders.forEach((o) => map.set(o.id, o));
+          localOrders.forEach((o) => {
+            if (!map.has(o.id)) map.set(o.id, o);
+          });
+          const merged = Array.from(map.values());
+          localStorage.setItem(ORDERS_STORAGE_KEY, JSON.stringify(merged));
+          return merged.filter((o) => o.restaurant_id === restaurantId);
+        }
+      }
+    }
+  } catch (e) {
+    console.warn("Failed to sync cloud orders", e);
+  }
+  return getRestaurantOrders(restaurantId);
+}
+
 export function updateOrderStatus(orderId: string, newStatus: RestaurantOrder["status"]): void {
   if (typeof window === "undefined") return;
   try {
@@ -817,12 +844,49 @@ export function updateOrderStatus(orderId: string, newStatus: RestaurantOrder["s
   }
 }
 
+export function playLuxuryOrderChime() {
+  if (typeof window === "undefined") return;
+  try {
+    const AudioCtx = window.AudioContext || (window as any).webkitAudioContext;
+    if (!AudioCtx) return;
+    const ctx = new AudioCtx();
+
+    // High crisp bell ding (880Hz / A5)
+    const osc1 = ctx.createOscillator();
+    const gain1 = ctx.createGain();
+    osc1.type = "sine";
+    osc1.frequency.setValueAtTime(880, ctx.currentTime);
+    gain1.gain.setValueAtTime(0.35, ctx.currentTime);
+    gain1.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 0.8);
+    osc1.connect(gain1);
+    gain1.connect(ctx.destination);
+    osc1.start(ctx.currentTime);
+    osc1.stop(ctx.currentTime + 0.8);
+
+    // Warm resonant chime (1320Hz / E6)
+    const osc2 = ctx.createOscillator();
+    const gain2 = ctx.createGain();
+    osc2.type = "triangle";
+    osc2.frequency.setValueAtTime(1320, ctx.currentTime + 0.12);
+    gain2.gain.setValueAtTime(0.28, ctx.currentTime + 0.12);
+    gain2.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 1.2);
+    osc2.connect(gain2);
+    gain2.connect(ctx.destination);
+    osc2.start(ctx.currentTime + 0.12);
+    osc2.stop(ctx.currentTime + 1.2);
+  } catch (e) {
+    console.warn("Audio chime cannot play before user interaction", e);
+  }
+}
+
 export function createGuestOrder(
   restaurantId: string,
   tableNumber: number,
   customerName: string,
   items: { id: string; name: string; price: number; quantity: number }[],
-  floor?: string
+  floor?: string,
+  phone?: string,
+  notes?: string
 ): RestaurantOrder {
   const total = items.reduce((sum, item) => sum + item.price * item.quantity, 0);
   const newOrder: RestaurantOrder = {
@@ -830,15 +894,37 @@ export function createGuestOrder(
     restaurant_id: restaurantId,
     order_number: (Math.floor(100 + Math.random() * 900)).toString(),
     table_number: Number(tableNumber),
+    floor: floor || "Ground Floor",
     customer_name: customerName || `Table ${tableNumber} Guest`,
+    customer_phone: phone || "",
+    order_type: "dine_in",
+    source: "qr_scan",
+    notes: notes || "",
     items,
     total,
     status: "new",
     created_at: "Just now",
-    floor: floor || "Ground Floor",
   };
 
   if (typeof window !== "undefined") {
+    // Send to centralized server API
+    fetch("/api/orders", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        restaurant_id: restaurantId,
+        table_number: Number(tableNumber),
+        floor: floor || "Ground Floor",
+        customer_name: newOrder.customer_name,
+        customer_phone: phone,
+        order_type: "dine_in",
+        source: "qr_scan",
+        notes,
+        items,
+        total,
+      }),
+    }).catch((e) => console.warn("Cloud sync note:", e));
+
     try {
       const raw = localStorage.getItem(ORDERS_STORAGE_KEY);
       const orders: RestaurantOrder[] = raw ? JSON.parse(raw) : DEFAULT_ORDERS;
@@ -862,6 +948,63 @@ export function createGuestOrder(
       localStorage.setItem(TABLES_STORAGE_KEY, JSON.stringify(updatedTables));
     } catch (e) {
       console.error("Failed to save guest order", e);
+    }
+  }
+
+  return newOrder;
+}
+
+export function createTakeawayOrder(
+  restaurantId: string,
+  customerName: string,
+  customerPhone: string,
+  items: { id: string; name: string; price: number; quantity: number }[],
+  notes?: string
+): RestaurantOrder {
+  const total = items.reduce((sum, item) => sum + item.price * item.quantity, 0);
+  const newOrder: RestaurantOrder = {
+    id: `takeaway-${restaurantId}-${Date.now()}`,
+    restaurant_id: restaurantId,
+    order_number: (Math.floor(100 + Math.random() * 900)).toString(),
+    table_number: 0,
+    floor: "Takeaway Counter",
+    customer_name: customerName || "Takeaway Customer",
+    customer_phone: customerPhone || "",
+    order_type: "takeaway",
+    source: "customer_portal",
+    notes: notes || "",
+    estimated_pickup_minutes: 25,
+    items,
+    total,
+    status: "new",
+    created_at: "Just now",
+  };
+
+  if (typeof window !== "undefined") {
+    // Send to centralized server API
+    fetch("/api/orders", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        restaurant_id: restaurantId,
+        table_number: 0,
+        floor: "Takeaway Counter",
+        customer_name: newOrder.customer_name,
+        customer_phone: customerPhone,
+        order_type: "takeaway",
+        source: "customer_portal",
+        notes,
+        items,
+        total,
+      }),
+    }).catch((e) => console.warn("Cloud sync note:", e));
+
+    try {
+      const raw = localStorage.getItem(ORDERS_STORAGE_KEY);
+      const orders: RestaurantOrder[] = raw ? JSON.parse(raw) : DEFAULT_ORDERS;
+      localStorage.setItem(ORDERS_STORAGE_KEY, JSON.stringify([newOrder, ...orders]));
+    } catch (e) {
+      console.error("Failed to save takeaway order", e);
     }
   }
 

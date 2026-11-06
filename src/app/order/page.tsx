@@ -34,8 +34,10 @@ function GuestOrderContent() {
   const [selectedCat, setSelectedCat] = useState<string>("all");
   const [cart, setCart] = useState<{ [itemId: string]: number }>({});
   const [guestName, setGuestName] = useState<string>("");
+  const [guestPhone, setGuestPhone] = useState<string>("");
+  const [guestNotes, setGuestNotes] = useState<string>("");
   const [isCartOpen, setIsCartOpen] = useState<boolean>(false);
-  const [placedOrder, setPlacedOrder] = useState<{ orderNumber: string; total: number } | null>(null);
+  const [placedOrder, setPlacedOrder] = useState<{ orderNumber: string; total: number; table: number } | null>(null);
 
   useEffect(() => {
     const tenants = getStoredTenants();
@@ -109,10 +111,17 @@ function GuestOrderContent() {
       tenant.id,
       Number(tableParam),
       guestName.trim() || `Table ${tableParam} Guest`,
-      items
+      items,
+      "Ground Floor",
+      guestPhone.trim(),
+      guestNotes.trim()
     );
 
-    setPlacedOrder({ orderNumber: order.order_number, total: order.total });
+    setPlacedOrder({
+      orderNumber: order.order_number,
+      total: order.total,
+      table: Number(tableParam),
+    });
     setCart({});
     setIsCartOpen(false);
   };
@@ -381,17 +390,43 @@ function GuestOrderContent() {
                 </div>
               ))}
 
-              <div className="pt-4 space-y-2">
-                <label className="block text-xs font-medium text-slate-300">
-                  Guest Name / Special Instructions (Optional)
-                </label>
-                <input
-                  type="text"
-                  placeholder="e.g. Ramesh • Medium spicy, extra lemons"
-                  value={guestName}
-                  onChange={(e) => setGuestName(e.target.value)}
-                  className="w-full bg-slate-950 border border-slate-700 rounded-xl px-3 py-2 text-xs text-white"
-                />
+              <div className="pt-4 space-y-3">
+                <div>
+                  <label className="block text-[11px] font-medium text-slate-300 mb-1">
+                    Your Name (Optional)
+                  </label>
+                  <input
+                    type="text"
+                    placeholder="e.g. Ramesh Kumar"
+                    value={guestName}
+                    onChange={(e) => setGuestName(e.target.value)}
+                    className="w-full bg-slate-950 border border-slate-700 rounded-xl px-3 py-2 text-xs text-white placeholder-slate-500 focus:outline-none focus:border-amber-400"
+                  />
+                </div>
+                <div>
+                  <label className="block text-[11px] font-medium text-slate-300 mb-1">
+                    Mobile Phone (For Bill & Updates)
+                  </label>
+                  <input
+                    type="tel"
+                    placeholder="e.g. +91 98765 43210"
+                    value={guestPhone}
+                    onChange={(e) => setGuestPhone(e.target.value)}
+                    className="w-full bg-slate-950 border border-slate-700 rounded-xl px-3 py-2 text-xs text-white placeholder-slate-500 focus:outline-none focus:border-amber-400"
+                  />
+                </div>
+                <div>
+                  <label className="block text-[11px] font-medium text-slate-300 mb-1">
+                    Special Cooking Request (Optional)
+                  </label>
+                  <input
+                    type="text"
+                    placeholder="e.g. Medium spicy, less oil, bring water"
+                    value={guestNotes}
+                    onChange={(e) => setGuestNotes(e.target.value)}
+                    className="w-full bg-slate-950 border border-slate-700 rounded-xl px-3 py-2 text-xs text-white placeholder-slate-500 focus:outline-none focus:border-amber-400"
+                  />
+                </div>
               </div>
 
               {/* Order Calculation */}

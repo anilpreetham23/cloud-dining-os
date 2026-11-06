@@ -52,6 +52,10 @@ import {
   Copy,
   ExternalLink,
   Scan,
+  Volume2,
+  VolumeX,
+  BellRing,
+  ShoppingBag,
 } from "lucide-react";
 import {
   getActiveSession,
@@ -80,6 +84,7 @@ import {
   deleteRestaurantStaff,
   changeAdminPassword,
   updateRestaurantProfile,
+  playLuxuryOrderChime,
 } from "@/lib/tenantStore";
 import {
   UserSession,
@@ -276,6 +281,18 @@ export default function RestaurantAdminPortal() {
   const [profileGst, setProfileGst] = useState(5);
   const [profileSuccess, setProfileSuccess] = useState("");
 
+  // Live Realtime Order Alert & Audio state
+  const [soundEnabled, setSoundEnabled] = useState<boolean>(true);
+  const [liveAlert, setLiveAlert] = useState<{
+    id: string;
+    type: "dine_in" | "takeaway";
+    title: string;
+    subtitle: string;
+    orderNumber: string;
+    amount: number;
+    tableNumber?: number;
+  } | null>(null);
+
   // Load session, lighting mode & restaurant data
   useEffect(() => {
     // Read saved lighting mode (dark / light)
@@ -336,6 +353,90 @@ export default function RestaurantAdminPortal() {
     setInventoryItems(getRestaurantInventory(restId));
     setStaffList(getRestaurantStaff(restId));
   };
+
+  // Realtime Cloud Orders Polling & Audio Notification Engine
+  useEffect(() => {
+    if (!tenant?.id) return;
+
+    let isMounted = true;
+    const knownIds = new Set<string>();
+
+    // Initialize with existing orders so we only alert on brand new incoming ones
+    const currentList = getRestaurantOrders(tenant.id);
+    currentList.forEach((o) => knownIds.add(o.id));
+
+    const pollInterval = setInterval(async () => {
+      if (!isMounted || !tenant?.id) return;
+      try {
+        const res = await fetch(`/api/orders?restaurant_id=${encodeURIComponent(tenant.id)}`);
+        if (!res.ok) return;
+        const data = await res.json();
+        if (data.success && Array.isArray(data.orders)) {
+          const cloudOrders: RestaurantOrder[] = data.orders;
+
+          // Check if any order is not in knownIds
+          const newOrders = cloudOrders.filter((o) => !knownIds.has(o.id));
+
+          if (newOrders.length > 0) {
+            const latest = newOrders[0];
+            newOrders.forEach((o) => knownIds.add(o.id));
+
+            // Trigger luxury bell chime if sound enabled
+            if (soundEnabled) {
+              playLuxuryOrderChime();
+            }
+
+            // Show Toast Alert
+            if (latest.order_type === "takeaway") {
+              setLiveAlert({
+                id: latest.id,
+                type: "takeaway",
+                title: "New Takeaway Order Placed!",
+                subtitle: `${latest.customer_name || "Customer"} (${latest.customer_phone || "Takeaway"}) • ${latest.items.map((i) => `${i.quantity}x ${i.name}`).join(", ")}`,
+                orderNumber: latest.order_number,
+                amount: latest.total,
+              });
+            } else {
+              setLiveAlert({
+                id: latest.id,
+                type: "dine_in",
+                title: `In-Person Dine-In! Table #${latest.table_number}`,
+                subtitle: `${latest.floor || "Floor"} • ${latest.items.map((i) => `${i.quantity}x ${i.name}`).join(", ")}`,
+                orderNumber: latest.order_number,
+                amount: latest.total,
+                tableNumber: latest.table_number,
+              });
+
+              // Mark table as occupied in Floor Grid
+              if (latest.table_number) {
+                const curTables = getRestaurantTables(tenant.id);
+                const targetTbl = curTables.find((t) => t.table_number === latest.table_number);
+                if (targetTbl) {
+                  updateTableStatus(targetTbl.id, "occupied");
+                  setTables(getRestaurantTables(tenant.id));
+                }
+              }
+            }
+
+            // Sync orders state in UI
+            setOrders(getRestaurantOrders(tenant.id));
+
+            // Auto dismiss after 8 seconds
+            setTimeout(() => {
+              setLiveAlert((cur) => (cur?.id === latest.id ? null : cur));
+            }, 8000);
+          }
+        }
+      } catch (err) {
+        // Silent catch for network drops
+      }
+    }, 3000);
+
+    return () => {
+      isMounted = false;
+      clearInterval(pollInterval);
+    };
+  }, [tenant?.id, soundEnabled]);
 
   // Toggle Dark / Light Mode
   const toggleThemeMode = () => {
@@ -778,7 +879,7 @@ export default function RestaurantAdminPortal() {
           </div>
 
           {/* Quick Metrics, Theme Toggle & Actions */}
-          <div className="flex items-center gap-3">
+          <div className="flex items-center gap-2.5">
             <div
               className={`hidden sm:flex items-center gap-2 px-3 py-1.5 rounded-xl border text-xs ${
                 isDark
@@ -791,6 +892,47 @@ export default function RestaurantAdminPortal() {
                 ₹{totalRevenueToday.toLocaleString("en-IN")}
               </span>
             </div>
+
+            {/* Direct Link to Customer Ordering Portal */}
+            <a
+              href={`/explore?restaurant=${tenant.id}`}
+              target="_blank"
+              rel="noopener noreferrer"
+              title="Open Customer Online & Takeaway View"
+              className={`px-3 py-1.5 rounded-xl border text-xs font-semibold flex items-center gap-1.5 transition cursor-pointer ${
+                isDark
+                  ? "bg-amber-500/10 hover:bg-amber-500/20 text-amber-300 border-amber-500/30"
+                  : "bg-amber-50 hover:bg-amber-100 text-amber-800 border-amber-200"
+              }`}
+            >
+              <ShoppingBag className="w-3.5 h-3.5" />
+              <span className="hidden lg:inline">Customer Portal View</span>
+              <ExternalLink className="w-3 h-3" />
+            </a>
+
+            {/* Sound Notification Chime Toggle */}
+            <button
+              onClick={() => {
+                const next = !soundEnabled;
+                setSoundEnabled(next);
+                if (next) playLuxuryOrderChime();
+              }}
+              title={soundEnabled ? "Audio Bell Notifications: Enabled (Click to Mute)" : "Audio Notifications: Muted (Click to Unmute)"}
+              className={`p-2 rounded-xl transition cursor-pointer flex items-center gap-1 border shadow-sm ${
+                soundEnabled
+                  ? isDark
+                    ? "bg-emerald-500/10 hover:bg-emerald-500/20 text-emerald-400 border-emerald-500/30"
+                    : "bg-emerald-50 text-emerald-700 border-emerald-200"
+                  : isDark
+                  ? "bg-slate-800 text-slate-500 border-slate-700"
+                  : "bg-slate-100 text-slate-400 border-slate-200"
+              }`}
+            >
+              {soundEnabled ? <Volume2 className="w-4 h-4 text-emerald-400" /> : <VolumeX className="w-4 h-4" />}
+              <span className="text-xs font-semibold hidden xl:inline">
+                {soundEnabled ? "Chime On 🔔" : "Muted"}
+              </span>
+            </button>
 
             {/* LIGHT / DARK THEME TOGGLE SWITCH */}
             <button
@@ -830,6 +972,62 @@ export default function RestaurantAdminPortal() {
           </div>
         </div>
       </header>
+
+      {/* Live Order Incoming Toast Notification */}
+      {liveAlert && (
+        <div className="fixed top-20 right-4 sm:right-8 z-50 max-w-md w-full animate-fadeIn shadow-2xl">
+          <div
+            className={`border rounded-2xl p-4 shadow-2xl backdrop-blur-md flex items-start justify-between gap-3 ${
+              liveAlert.type === "takeaway"
+                ? "bg-amber-950/95 border-amber-500/70 text-amber-100"
+                : "bg-emerald-950/95 border-emerald-500/70 text-emerald-100"
+            }`}
+          >
+            <div className="flex items-start gap-3">
+              <div
+                className={`w-10 h-10 rounded-xl flex items-center justify-center shrink-0 shadow-md ${
+                  liveAlert.type === "takeaway"
+                    ? "bg-amber-400 text-slate-950"
+                    : "bg-emerald-400 text-slate-950"
+                }`}
+              >
+                {liveAlert.type === "takeaway" ? (
+                  <ShoppingBag className="w-5 h-5" />
+                ) : (
+                  <BellRing className="w-5 h-5 animate-bounce" />
+                )}
+              </div>
+              <div className="space-y-1">
+                <div className="flex items-center gap-2">
+                  <span className="font-bold text-sm text-white">{liveAlert.title}</span>
+                  <span className="font-mono text-xs font-black px-2 py-0.5 rounded-full bg-black/40 border border-white/20">
+                    #{liveAlert.orderNumber}
+                  </span>
+                </div>
+                <p className="text-xs text-slate-200 line-clamp-2">{liveAlert.subtitle}</p>
+                <div className="flex items-center gap-3 pt-1 text-xs font-mono">
+                  <span className="font-bold text-white">Total: ₹{liveAlert.amount}</span>
+                  <button
+                    onClick={() => {
+                      setActiveTab("orders");
+                      setLiveAlert(null);
+                    }}
+                    className="underline font-bold text-amber-300 hover:text-white cursor-pointer"
+                  >
+                    View in Orders →
+                  </button>
+                </div>
+              </div>
+            </div>
+            <button
+              onClick={() => setLiveAlert(null)}
+              className="p-1 rounded-lg hover:bg-black/30 text-white/70 hover:text-white cursor-pointer shrink-0"
+            >
+              <X className="w-4 h-4" />
+            </button>
+          </div>
+        </div>
+      )}
 
       {/* Navigation Sub-Tabs */}
       <div
@@ -978,16 +1176,34 @@ export default function RestaurantAdminPortal() {
                           }`}
                         >
                           <div>
-                            <span className="font-mono text-xs font-bold" style={{ color: themeColor }}>
-                              #{order.order_number}
-                            </span>
+                            <div className="flex items-center gap-1.5">
+                              <span className="font-mono text-xs font-bold" style={{ color: themeColor }}>
+                                #{order.order_number}
+                              </span>
+                              {order.order_type === "takeaway" ? (
+                                <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-amber-500/15 text-amber-400 border border-amber-500/30 flex items-center gap-1">
+                                  <ShoppingBag className="w-3 h-3" /> Takeaway
+                                </span>
+                              ) : (
+                                <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-emerald-500/15 text-emerald-400 border border-emerald-500/30 flex items-center gap-1">
+                                  <UtensilsCrossed className="w-3 h-3" /> Dine-In
+                                </span>
+                              )}
+                            </div>
                             <div
-                              className={`text-sm font-bold mt-0.5 ${
+                              className={`text-sm font-bold mt-1 ${
                                 isDark ? "text-white" : "text-slate-900"
                               }`}
                             >
-                              Table {order.table_number} • {order.customer_name}
+                              {order.order_type === "takeaway"
+                                ? `🥡 Takeaway • ${order.customer_name}`
+                                : `Table #${order.table_number} • ${order.customer_name}`}
                             </div>
+                            {order.customer_phone && (
+                              <div className={`text-[11px] font-mono mt-0.5 ${isDark ? "text-slate-400" : "text-slate-600"}`}>
+                                📞 {order.customer_phone}
+                              </div>
+                            )}
                             {order.floor && (
                               <div
                                 className={`text-[10px] font-mono mt-0.5 ${
@@ -995,6 +1211,11 @@ export default function RestaurantAdminPortal() {
                                 }`}
                               >
                                 {order.floor}
+                              </div>
+                            )}
+                            {order.notes && (
+                              <div className="text-[11px] italic text-amber-400/90 mt-1 bg-amber-500/10 px-2 py-0.5 rounded border border-amber-500/20">
+                                Note: &quot;{order.notes}&quot;
                               </div>
                             )}
                           </div>

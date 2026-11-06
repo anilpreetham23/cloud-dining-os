@@ -1,6 +1,7 @@
 "use client";
 
 import React, { useState } from "react";
+import Link from "next/link";
 import { useRouter } from "next/navigation";
 import {
   ShieldCheck,
@@ -17,6 +18,7 @@ import {
   ChevronDown,
   ChevronUp,
   KeyRound,
+  UtensilsCrossed,
 } from "lucide-react";
 import { authenticateUser } from "@/lib/tenantStore";
 
@@ -80,6 +82,26 @@ export default function UniversalLoginPage() {
           <p className="text-sm text-slate-400 mt-2">
             Centralized portal for Bobby (Super Admin) & Partner Restaurant Outlets
           </p>
+        </div>
+
+        {/* Quick Link to Customer Ordering Portal */}
+        <div className="mb-6 p-4 rounded-2xl bg-gradient-to-r from-amber-500/15 via-amber-500/10 to-amber-500/5 border border-amber-500/30 flex items-center justify-between gap-3 shadow-lg">
+          <div className="flex items-center gap-3">
+            <div className="w-9 h-9 rounded-xl bg-amber-400 text-slate-950 flex items-center justify-center font-bold shadow-md shrink-0">
+              <UtensilsCrossed className="w-5 h-5" />
+            </div>
+            <div className="text-left">
+              <span className="font-bold text-white text-xs block">Looking to order food?</span>
+              <span className="text-[11px] text-amber-300">Browse menus &amp; order takeaway</span>
+            </div>
+          </div>
+          <Link
+            href="/explore"
+            className="px-3.5 py-1.5 rounded-xl bg-amber-400 hover:bg-amber-300 text-slate-950 font-bold text-xs flex items-center gap-1.5 transition shadow cursor-pointer shrink-0"
+          >
+            <span>Explore</span>
+            <ArrowRight className="w-3.5 h-3.5" />
+          </Link>
         </div>
 
         {/* Login Card */}

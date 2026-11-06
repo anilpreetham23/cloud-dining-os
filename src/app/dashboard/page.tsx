@@ -31,6 +31,7 @@ import {
   EyeOff,
   SlidersHorizontal,
   X,
+  UtensilsCrossed,
 } from "lucide-react";
 
 import {
@@ -295,6 +296,16 @@ export default function SuperAdminDashboardPage() {
 
           {/* Quick Actions & Profile */}
           <div className="flex items-center gap-3">
+            <Link
+              href="/explore"
+              target="_blank"
+              className="px-3.5 py-2 rounded-xl text-xs font-semibold text-amber-300 hover:text-white bg-amber-500/10 hover:bg-amber-500/20 border border-amber-500/30 transition flex items-center gap-1.5"
+            >
+              <UtensilsCrossed className="w-3.5 h-3.5" />
+              <span className="hidden md:inline">Customer Marketplace</span>
+              <ExternalLink className="w-3 h-3" />
+            </Link>
+
             <button
               onClick={() => setIsOnboardModalOpen(true)}
               className="px-4 py-2 rounded-xl text-xs font-bold bg-gradient-to-r from-amber-300 via-amber-400 to-amber-500 text-slate-950 flex items-center gap-2 shadow-lg shadow-amber-500/20 hover:scale-105 transition-all cursor-pointer"
