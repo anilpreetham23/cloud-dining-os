@@ -1485,88 +1485,107 @@ export default function RestaurantAdminPortal() {
             {/* MODAL 1: INDIVIDUAL TABLE QR SCANNER STANDEE              */}
             {/* ========================================================== */}
             {selectedQrTable && (
-              <div className="fixed inset-0 z-50 bg-black/80 backdrop-blur-sm flex items-center justify-center p-4">
+              <div className="fixed inset-0 z-50 bg-black/80 backdrop-blur-sm flex items-center justify-center p-3 sm:p-4 overflow-y-auto">
                 <div
-                  className={`border rounded-3xl max-w-md w-full p-6 shadow-2xl relative animate-scaleIn ${
+                  className={`border rounded-2xl sm:rounded-3xl max-w-sm w-full max-h-[90vh] flex flex-col p-4 sm:p-5 shadow-2xl relative animate-scaleIn my-auto ${
                     isDark ? "bg-slate-900 border-slate-800 text-white" : "bg-white border-slate-200 text-slate-900"
                   }`}
                 >
                   <button
                     onClick={() => setSelectedQrTable(null)}
-                    className="absolute right-4 top-4 p-1.5 rounded-full hover:bg-slate-800 text-slate-400 cursor-pointer"
+                    className={`absolute right-3 top-3 p-1 rounded-full transition cursor-pointer z-10 ${
+                      isDark ? "hover:bg-slate-800 text-slate-400 hover:text-white" : "hover:bg-slate-100 text-slate-500 hover:text-slate-900"
+                    }`}
                   >
-                    <X className="w-5 h-5" />
+                    <X className="w-4 h-4" />
                   </button>
 
-                  {/* Standee Header */}
-                  <div className="text-center space-y-1 pb-4 border-b border-slate-800/80">
-                    <div
-                      className="w-12 h-12 rounded-2xl mx-auto flex items-center justify-center font-bold text-xl shadow-md mb-2"
-                      style={{ backgroundColor: themeColor, color: contrastText }}
-                    >
-                      <Store className="w-6 h-6" />
-                    </div>
-                    <h3 className="text-lg font-bold font-serif">{tenant.name}</h3>
-                    <p className="text-xs text-slate-400">{tenant.tagline || tenant.city}</p>
-                  </div>
-
-                  {/* Table Badge & QR Standee Box */}
-                  <div className="py-5 text-center space-y-3">
-                    <div className="inline-block px-4 py-1.5 rounded-full bg-amber-500/10 border border-amber-500/30 text-amber-400 font-mono text-sm font-bold tracking-wider uppercase">
-                      TABLE #{selectedQrTable.table_number}
-                    </div>
-                    <div className="text-xs text-slate-400">
-                      {selectedQrTable.floor} • {selectedQrTable.section || "Main Dining"} ({selectedQrTable.capacity} Pax)
-                    </div>
-
-                    {/* The Scannable QR Code */}
-                    <div className="p-4 bg-white rounded-2xl border-4 border-slate-200 shadow-inner inline-block mx-auto relative group">
-                      {/* eslint-disable-next-line @next/next/no-img-element */}
-                      <img
-                        src={getTableQrCodeImg(selectedQrTable.table_number, 240)}
-                        alt={`QR Code for Table ${selectedQrTable.table_number}`}
-                        className="w-48 h-48 mx-auto"
-                      />
-                      <div className="text-[10px] font-mono text-slate-500 mt-2">
-                        SCAN TO VIEW MENU & ORDER
+                  <div className="overflow-y-auto pr-0.5 space-y-3">
+                    {/* Standee Header */}
+                    <div className="text-center space-y-0.5 pb-2.5 border-b border-slate-700/40 dark:border-slate-800/80">
+                      <div
+                        className="w-9 h-9 rounded-xl mx-auto flex items-center justify-center font-bold text-base shadow-sm mb-1"
+                        style={{ backgroundColor: themeColor, color: contrastText }}
+                      >
+                        <Store className="w-4 h-4" />
                       </div>
+                      <h3 className="text-sm font-bold font-serif leading-tight">{tenant.name}</h3>
+                      <p className="text-[11px] text-slate-400 line-clamp-1">{tenant.tagline || tenant.city}</p>
                     </div>
 
-                    <p className="text-[11px] text-slate-400 max-w-xs mx-auto">
-                      Guests scan with their phone camera to open live dining menu & place tickets directly to the kitchen.
-                    </p>
-                  </div>
-
-                  {/* Actions Toolbar */}
-                  <div className="space-y-2 pt-2 border-t border-slate-800/80">
-                    <div className="grid grid-cols-2 gap-2">
-                      <button
-                        onClick={() => window.print()}
-                        className="py-2.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-white text-xs font-bold flex items-center justify-center gap-1.5 cursor-pointer shadow-sm"
+                    {/* Table Badge & QR Standee Box */}
+                    <div className="text-center space-y-2">
+                      <div
+                        className="inline-block px-3 py-1 rounded-full text-xs font-mono font-bold tracking-wider uppercase border"
+                        style={{
+                          backgroundColor: `rgba(${themeRgb.r}, ${themeRgb.g}, ${themeRgb.b}, 0.15)`,
+                          borderColor: `rgba(${themeRgb.r}, ${themeRgb.g}, ${themeRgb.b}, 0.35)`,
+                          color: themeColor,
+                        }}
                       >
-                        <Printer className="w-4 h-4 text-amber-400" />
-                        <span>Print Standee</span>
-                      </button>
+                        TABLE #{selectedQrTable.table_number}
+                      </div>
+                      <div className="text-[11px] text-slate-400">
+                        {selectedQrTable.floor} • {selectedQrTable.section || "Main Dining"} ({selectedQrTable.capacity} Pax)
+                      </div>
 
-                      <button
-                        onClick={() => copyTableLink(selectedQrTable.table_number)}
-                        className="py-2.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-white text-xs font-bold flex items-center justify-center gap-1.5 cursor-pointer shadow-sm"
-                      >
-                        {copiedLink ? <Check className="w-4 h-4 text-emerald-400" /> : <Copy className="w-4 h-4" />}
-                        <span>{copiedLink ? "Link Copied!" : "Copy Order Link"}</span>
-                      </button>
+                      {/* Scannable QR Code - Compact & Perfectly Fitted to Screen */}
+                      <div className="p-2.5 bg-white rounded-xl border-2 border-slate-200 shadow-sm inline-block mx-auto">
+                        {/* eslint-disable-next-line @next/next/no-img-element */}
+                        <img
+                          src={getTableQrCodeImg(selectedQrTable.table_number, 200)}
+                          alt={`QR Code for Table ${selectedQrTable.table_number}`}
+                          className="w-32 h-32 sm:w-36 sm:h-36 mx-auto object-contain block"
+                        />
+                        <div className="text-[9px] font-mono font-bold text-slate-600 mt-1 tracking-wide">
+                          SCAN TO ORDER AT TABLE
+                        </div>
+                      </div>
+
+                      <p className="text-[10px] text-slate-400 max-w-[240px] mx-auto leading-tight">
+                        Point phone camera to browse digital menu and fire tickets to kitchen.
+                      </p>
                     </div>
 
-                    <a
-                      href={getTableOrderingUrl(selectedQrTable.table_number)}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      style={{ backgroundColor: themeColor, color: contrastText }}
-                      className="w-full py-2.5 rounded-xl font-bold text-xs flex items-center justify-center gap-2 cursor-pointer shadow-md hover:brightness-110"
-                    >
-                      <ExternalLink className="w-4 h-4" />
-                      <span>Test Scan / Launch Live Guest Menu</span>
-                    </a>
+                    {/* Actions Toolbar */}
+                    <div className="space-y-1.5 pt-2 border-t border-slate-700/40 dark:border-slate-800/80">
+                      <div className="grid grid-cols-2 gap-2">
+                        <button
+                          onClick={() => window.print()}
+                          className={`py-2 rounded-xl text-xs font-semibold flex items-center justify-center gap-1.5 cursor-pointer shadow-sm border transition ${
+                            isDark
+                              ? "bg-slate-800 hover:bg-slate-700 text-white border-slate-700"
+                              : "bg-slate-100 hover:bg-slate-200 text-slate-800 border-slate-300"
+                          }`}
+                        >
+                          <Printer className="w-3.5 h-3.5 text-amber-500" />
+                          <span>Print Standee</span>
+                        </button>
+
+                        <button
+                          onClick={() => copyTableLink(selectedQrTable.table_number)}
+                          className={`py-2 rounded-xl text-xs font-semibold flex items-center justify-center gap-1.5 cursor-pointer shadow-sm border transition ${
+                            isDark
+                              ? "bg-slate-800 hover:bg-slate-700 text-white border-slate-700"
+                              : "bg-slate-100 hover:bg-slate-200 text-slate-800 border-slate-300"
+                          }`}
+                        >
+                          {copiedLink ? <Check className="w-3.5 h-3.5 text-emerald-400" /> : <Copy className="w-3.5 h-3.5" />}
+                          <span>{copiedLink ? "Copied!" : "Copy Link"}</span>
+                        </button>
+                      </div>
+
+                      <a
+                        href={getTableOrderingUrl(selectedQrTable.table_number)}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        style={{ backgroundColor: themeColor, color: contrastText }}
+                        className="w-full py-2 rounded-xl font-bold text-xs flex items-center justify-center gap-1.5 cursor-pointer shadow-md hover:brightness-110"
+                      >
+                        <ExternalLink className="w-3.5 h-3.5" />
+                        <span>Test Scan / Open Guest Menu</span>
+                      </a>
+                    </div>
                   </div>
                 </div>
               </div>
@@ -1576,64 +1595,64 @@ export default function RestaurantAdminPortal() {
             {/* MODAL 2: BATCH PRINT ALL TABLE QR SCANNERS                */}
             {/* ========================================================== */}
             {isBatchQrOpen && (
-              <div className="fixed inset-0 z-50 bg-black/85 backdrop-blur-sm flex items-center justify-center p-4">
+              <div className="fixed inset-0 z-50 bg-black/85 backdrop-blur-sm flex items-center justify-center p-3 sm:p-4">
                 <div
-                  className={`border rounded-3xl max-w-4xl w-full max-h-[90vh] flex flex-col p-6 shadow-2xl relative ${
+                  className={`border rounded-2xl sm:rounded-3xl max-w-3xl w-full max-h-[88vh] flex flex-col p-4 sm:p-5 shadow-2xl relative ${
                     isDark ? "bg-slate-900 border-slate-800 text-white" : "bg-white border-slate-200 text-slate-900"
                   }`}
                 >
-                  <div className="flex items-center justify-between pb-4 border-b border-slate-800">
+                  <div className="flex items-center justify-between pb-3 border-b border-slate-700/40 dark:border-slate-800">
                     <div>
-                      <h3 className="text-lg font-bold font-serif flex items-center gap-2">
-                        <Printer className="w-5 h-5 text-amber-500" />
+                      <h3 className="text-base font-bold font-serif flex items-center gap-2">
+                        <Printer className="w-4 h-4 text-amber-500" />
                         Batch Print Table QR Standees — {tenant.name}
                       </h3>
                       <p className="text-xs text-slate-400">
-                        Printable standee cards for all {tables.length} tables to laminate or place in acrylic table tents.
+                        Printable standee cards for all {tables.length} tables to place in acrylic table tents.
                       </p>
                     </div>
                     <div className="flex items-center gap-2">
                       <button
                         onClick={() => window.print()}
                         style={{ backgroundColor: themeColor, color: contrastText }}
-                        className="px-4 py-2 rounded-xl text-xs font-bold flex items-center gap-1.5 shadow-md hover:brightness-110 cursor-pointer"
+                        className="px-3.5 py-1.5 rounded-xl text-xs font-bold flex items-center gap-1.5 shadow-md hover:brightness-110 cursor-pointer"
                       >
-                        <Printer className="w-4 h-4" />
+                        <Printer className="w-3.5 h-3.5" />
                         <span>Print All Sheets</span>
                       </button>
                       <button
                         onClick={() => setIsBatchQrOpen(false)}
-                        className="p-1.5 rounded-lg hover:bg-slate-800 text-slate-400 cursor-pointer"
+                        className="p-1 rounded-lg hover:bg-slate-800/40 text-slate-400 cursor-pointer"
                       >
-                        <X className="w-5 h-5" />
+                        <X className="w-4 h-4" />
                       </button>
                     </div>
                   </div>
 
                   {/* Batch Cards Grid */}
-                  <div className="flex-1 overflow-y-auto py-5 grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-4">
+                  <div className="flex-1 overflow-y-auto py-4 grid grid-cols-2 sm:grid-cols-3 gap-3 pr-1">
                     {tables.map((t) => (
                       <div
                         key={t.id}
-                        className="p-5 rounded-2xl bg-white text-slate-900 border-2 border-slate-300 text-center space-y-2 shadow-md"
+                        className="p-3 rounded-xl bg-white text-slate-900 border-2 border-slate-300 text-center space-y-1.5 shadow-sm"
                       >
-                        <div className="font-serif font-black text-xs text-slate-700 tracking-wider uppercase">
+                        <div className="font-serif font-black text-[10px] text-slate-700 tracking-wider uppercase truncate">
                           {tenant.name}
                         </div>
-                        <div className="inline-block px-3 py-1 rounded-full bg-slate-900 text-white font-mono text-sm font-bold">
+                        <div className="inline-block px-2.5 py-0.5 rounded-full bg-slate-900 text-white font-mono text-xs font-bold">
                           TABLE #{t.table_number}
                         </div>
-                        <div className="text-[11px] text-slate-500 font-mono">
+                        <div className="text-[10px] text-slate-500 font-mono truncate">
                           {t.floor} • {t.section}
                         </div>
                         {/* eslint-disable-next-line @next/next/no-img-element */}
                         <img
-                          src={getTableQrCodeImg(t.table_number, 180)}
+                          src={getTableQrCodeImg(t.table_number, 140)}
                           alt={`QR Table ${t.table_number}`}
-                          className="w-36 h-36 mx-auto my-1"
+                          className="w-24 h-24 mx-auto my-0.5 object-contain"
                         />
-                        <div className="text-[10px] font-bold tracking-wider text-slate-600 uppercase">
-                          Scan to Browse Menu & Order
+                        <div className="text-[9px] font-bold tracking-wider text-slate-600 uppercase">
+                          Scan to Order
                         </div>
                       </div>
                     ))}
