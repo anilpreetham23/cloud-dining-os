@@ -41,11 +41,17 @@ import {
   MapPin,
   Mail,
   Percent,
-  Sliders,
   SlidersHorizontal,
-  UserCheck,
   Lock,
   KeyRound,
+  Sun,
+  Moon,
+  QrCode,
+  Printer,
+  Download,
+  Copy,
+  ExternalLink,
+  Scan,
 } from "lucide-react";
 import {
   getActiveSession,
@@ -110,7 +116,6 @@ function rgbToHex(r: number, g: number, b: number): string {
 }
 
 function getContrastTextColor(r: number, g: number, b: number): string {
-  // WCAG relative luminance formula
   const y = (299 * r + 587 * g + 114 * b) / 1000;
   return y > 155 ? "#060b13" : "#ffffff";
 }
@@ -151,6 +156,9 @@ export default function RestaurantAdminPortal() {
   const [tenant, setTenant] = useState<TenantRestaurant | null>(null);
   const [adminsList, setAdminsList] = useState<AdminAccount[]>([]);
 
+  // Lighting Mode (Dark / Light Theme Toggle)
+  const [themeMode, setThemeMode] = useState<"dark" | "light">("dark");
+
   // Navigation tab: orders | kds | tables | menu | staff | sales | settings
   const [activeTab, setActiveTab] = useState<
     "orders" | "kds" | "tables" | "menu" | "staff" | "sales" | "settings"
@@ -178,6 +186,11 @@ export default function RestaurantAdminPortal() {
   const [themeColor, setThemeColor] = useState<string>("#D4AF37");
   const [themeRgb, setThemeRgb] = useState<{ r: number; g: number; b: number }>({ r: 212, g: 175, b: 55 });
   const [themeSuccess, setThemeSuccess] = useState<string>("");
+
+  // Table QR Scanner Modals
+  const [selectedQrTable, setSelectedQrTable] = useState<RestaurantTable | null>(null);
+  const [isBatchQrOpen, setIsBatchQrOpen] = useState<boolean>(false);
+  const [copiedLink, setCopiedLink] = useState<boolean>(false);
 
   // Edit price modal state
   const [editingPriceItem, setEditingPriceItem] = useState<{ id: string; name: string; price: number } | null>(null);
@@ -263,8 +276,16 @@ export default function RestaurantAdminPortal() {
   const [profileGst, setProfileGst] = useState(5);
   const [profileSuccess, setProfileSuccess] = useState("");
 
-  // Load session & restaurant data
+  // Load session, lighting mode & restaurant data
   useEffect(() => {
+    // Read saved lighting mode (dark / light)
+    if (typeof window !== "undefined") {
+      const savedMode = localStorage.getItem("clouddining_theme_mode") as "dark" | "light" | null;
+      if (savedMode === "light" || savedMode === "dark") {
+        setThemeMode(savedMode);
+      }
+    }
+
     const active = getActiveSession();
     if (!active) {
       router.replace("/login");
@@ -316,9 +337,16 @@ export default function RestaurantAdminPortal() {
     setStaffList(getRestaurantStaff(restId));
   };
 
-  // ====================================================
-  // RGB THEME HANDLERS
-  // ====================================================
+  // Toggle Dark / Light Mode
+  const toggleThemeMode = () => {
+    const next = themeMode === "dark" ? "light" : "dark";
+    setThemeMode(next);
+    if (typeof window !== "undefined") {
+      localStorage.setItem("clouddining_theme_mode", next);
+    }
+  };
+
+  // RGB Theme Handlers
   const handleRgbSlider = (channel: "r" | "g" | "b", value: number) => {
     const nextRgb = { ...themeRgb, [channel]: Math.max(0, Math.min(255, Number(value))) };
     setThemeRgb(nextRgb);
@@ -384,6 +412,29 @@ export default function RestaurantAdminPortal() {
     if (confirm(`Are you sure you want to remove Table ${tableNumber}?`)) {
       deleteRestaurantTable(tableId);
       if (tenant) setTables(getRestaurantTables(tenant.id));
+    }
+  };
+
+  // QR Code Helpers
+  const getTableOrderingUrl = (tableNumber: number) => {
+    const origin =
+      typeof window !== "undefined" && window.location.origin
+        ? window.location.origin
+        : "https://cloud-dining-os.vercel.app";
+    return `${origin}/order?restaurant=${tenant?.id || ""}&table=${tableNumber}`;
+  };
+
+  const getTableQrCodeImg = (tableNumber: number, size = 300) => {
+    const url = getTableOrderingUrl(tableNumber);
+    return `https://api.qrserver.com/v1/create-qr-code/?size=${size}x${size}&data=${encodeURIComponent(url)}&margin=12&format=svg`;
+  };
+
+  const copyTableLink = (tableNumber: number) => {
+    const url = getTableOrderingUrl(tableNumber);
+    if (navigator?.clipboard) {
+      navigator.clipboard.writeText(url);
+      setCopiedLink(true);
+      setTimeout(() => setCopiedLink(false), 3000);
     }
   };
 
@@ -593,7 +644,8 @@ export default function RestaurantAdminPortal() {
     );
   }
 
-  // Dynamic contrast text for active theme
+  // Theme helper variables
+  const isDark = themeMode === "dark";
   const contrastText = getContrastTextColor(themeRgb.r, themeRgb.g, themeRgb.b);
   const passwordStrength = getPasswordStrength(newPassword);
 
@@ -632,7 +684,9 @@ export default function RestaurantAdminPortal() {
 
   return (
     <div
-      className="min-h-screen bg-[#070c16] text-slate-100 flex flex-col font-sans transition-colors duration-300"
+      className={`min-h-screen flex flex-col font-sans transition-colors duration-300 ${
+        isDark ? "bg-[#070c16] text-slate-100" : "bg-[#f8fafc] text-slate-900"
+      }`}
       style={
         {
           "--theme-primary": themeColor,
@@ -661,7 +715,11 @@ export default function RestaurantAdminPortal() {
       )}
 
       {/* Top Main Navigation Bar */}
-      <header className="bg-slate-900/90 border-b border-slate-800 sticky top-0 z-30 backdrop-blur-md px-6 py-3.5">
+      <header
+        className={`border-b sticky top-0 z-30 backdrop-blur-md px-6 py-3.5 transition-colors duration-300 ${
+          isDark ? "bg-slate-900/90 border-slate-800" : "bg-white/90 border-slate-200 shadow-sm"
+        }`}
+      >
         <div className="max-w-7xl mx-auto flex flex-col md:flex-row md:items-center justify-between gap-4">
           {/* Restaurant Profile with Dynamic RGB Emblem */}
           <div className="flex items-center gap-3.5">
@@ -678,18 +736,32 @@ export default function RestaurantAdminPortal() {
             </div>
             <div>
               <div className="flex items-center gap-2.5">
-                <h1 className="text-lg font-bold text-white font-serif tracking-tight">{tenant.name}</h1>
+                <h1
+                  className={`text-lg font-bold font-serif tracking-tight ${
+                    isDark ? "text-white" : "text-slate-900"
+                  }`}
+                >
+                  {tenant.name}
+                </h1>
                 <span className="px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wider bg-emerald-500/10 text-emerald-400 border border-emerald-500/30 rounded-full flex items-center gap-1">
                   <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" />
                   Live Outlet
                 </span>
                 {tenant.tagline && (
-                  <span className="hidden lg:inline text-xs text-slate-400 italic">
+                  <span
+                    className={`hidden lg:inline text-xs italic ${
+                      isDark ? "text-slate-400" : "text-slate-500"
+                    }`}
+                  >
                     — {tenant.tagline}
                   </span>
                 )}
               </div>
-              <div className="text-xs text-slate-400 flex items-center gap-2 mt-0.5">
+              <div
+                className={`text-xs flex items-center gap-2 mt-0.5 ${
+                  isDark ? "text-slate-400" : "text-slate-600"
+                }`}
+              >
                 <span>{tenant.city}</span>
                 <span>•</span>
                 <span style={{ color: themeColor }} className="font-medium">
@@ -698,33 +770,59 @@ export default function RestaurantAdminPortal() {
                 {tenant.gstin && (
                   <>
                     <span>•</span>
-                    <span className="font-mono text-[11px] text-slate-400">GSTIN: {tenant.gstin}</span>
+                    <span className="font-mono text-[11px]">GSTIN: {tenant.gstin}</span>
                   </>
                 )}
               </div>
             </div>
           </div>
 
-          {/* Quick Metrics & Actions */}
+          {/* Quick Metrics, Theme Toggle & Actions */}
           <div className="flex items-center gap-3">
-            <div className="hidden sm:flex items-center gap-2 bg-slate-950/80 px-3 py-1.5 rounded-xl border border-slate-800 text-xs">
-              <span className="text-slate-400">Today&apos;s Revenue:</span>
+            <div
+              className={`hidden sm:flex items-center gap-2 px-3 py-1.5 rounded-xl border text-xs ${
+                isDark
+                  ? "bg-slate-950/80 border-slate-800 text-slate-400"
+                  : "bg-slate-100 border-slate-200 text-slate-600"
+              }`}
+            >
+              <span>Today&apos;s Revenue:</span>
               <span className="font-bold font-mono" style={{ color: themeColor }}>
                 ₹{totalRevenueToday.toLocaleString("en-IN")}
               </span>
             </div>
 
+            {/* LIGHT / DARK THEME TOGGLE SWITCH */}
+            <button
+              onClick={toggleThemeMode}
+              title={isDark ? "Switch to Light Theme" : "Switch to Dark Theme"}
+              className={`p-2 rounded-xl transition-all cursor-pointer flex items-center gap-1.5 border shadow-sm ${
+                isDark
+                  ? "bg-slate-800/80 hover:bg-slate-800 text-amber-400 border-slate-700/60"
+                  : "bg-slate-100 hover:bg-slate-200 text-amber-600 border-slate-300"
+              }`}
+            >
+              {isDark ? <Sun className="w-4 h-4 animate-spin-slow" /> : <Moon className="w-4 h-4" />}
+              <span className="text-xs font-semibold hidden md:inline">
+                {isDark ? "Light Mode" : "Dark Mode"}
+              </span>
+            </button>
+
             <button
               onClick={() => tenant && loadRestaurantData(tenant.id)}
               title="Refresh Data"
-              className="p-2 rounded-xl bg-slate-800/80 hover:bg-slate-800 text-slate-300 border border-slate-700/60 transition cursor-pointer"
+              className={`p-2 rounded-xl border transition cursor-pointer ${
+                isDark
+                  ? "bg-slate-800/80 hover:bg-slate-800 text-slate-300 border-slate-700/60"
+                  : "bg-slate-100 hover:bg-slate-200 text-slate-700 border-slate-300"
+              }`}
             >
               <RefreshCw className="w-4 h-4" />
             </button>
 
             <button
               onClick={handleLogout}
-              className="px-3 py-2 rounded-xl bg-red-500/10 hover:bg-red-500/20 text-red-300 border border-red-500/30 text-xs font-semibold flex items-center gap-1.5 transition cursor-pointer"
+              className="px-3 py-2 rounded-xl bg-red-500/10 hover:bg-red-500/20 text-red-400 border border-red-500/30 text-xs font-semibold flex items-center gap-1.5 transition cursor-pointer"
             >
               <LogOut className="w-3.5 h-3.5" />
               <span>Sign Out</span>
@@ -733,8 +831,12 @@ export default function RestaurantAdminPortal() {
         </div>
       </header>
 
-      {/* Navigation Sub-Tabs with Dynamic Theme Highlights */}
-      <div className="bg-slate-900/60 border-b border-slate-800/80 px-6 py-2.5">
+      {/* Navigation Sub-Tabs */}
+      <div
+        className={`border-b px-6 py-2.5 transition-colors duration-300 ${
+          isDark ? "bg-slate-900/60 border-slate-800/80" : "bg-slate-100/90 border-slate-200"
+        }`}
+      >
         <div className="max-w-7xl mx-auto flex items-center gap-2 overflow-x-auto no-scrollbar">
           {[
             { id: "orders", label: "Live Orders & Billing", icon: Receipt, badge: activeOrdersCount },
@@ -763,7 +865,9 @@ export default function RestaurantAdminPortal() {
                 className={`px-3.5 py-2 rounded-xl text-xs font-semibold flex items-center gap-2 shrink-0 transition cursor-pointer ${
                   isActive
                     ? "font-bold shadow-md"
-                    : "text-slate-400 hover:text-white hover:bg-slate-800/60"
+                    : isDark
+                    ? "text-slate-400 hover:text-white hover:bg-slate-800/60"
+                    : "text-slate-600 hover:text-slate-900 hover:bg-slate-200/80"
                 }`}
               >
                 <Icon className="w-4 h-4" />
@@ -773,7 +877,9 @@ export default function RestaurantAdminPortal() {
                     className={`px-1.5 py-0.2 rounded-full text-[10px] font-mono font-bold ${
                       isActive
                         ? "bg-slate-950/20 text-current"
-                        : "bg-slate-800 text-slate-300 border border-slate-700"
+                        : isDark
+                        ? "bg-slate-800 text-slate-300 border border-slate-700"
+                        : "bg-slate-200 text-slate-700 border border-slate-300"
                     }`}
                   >
                     {tab.badge}
@@ -794,14 +900,20 @@ export default function RestaurantAdminPortal() {
           <div className="space-y-6">
             <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
               <div>
-                <h2 className="text-xl font-bold font-serif text-white">Live Dining Orders</h2>
-                <p className="text-xs text-slate-400">
+                <h2 className={`text-xl font-bold font-serif ${isDark ? "text-white" : "text-slate-900"}`}>
+                  Live Dining Orders
+                </h2>
+                <p className={`text-xs ${isDark ? "text-slate-400" : "text-slate-600"}`}>
                   Manage tickets, table service status, and bill settlement in real time.
                 </p>
               </div>
 
               {/* Status Filter Pills */}
-              <div className="flex items-center gap-1.5 bg-slate-900 p-1 rounded-xl border border-slate-800 text-xs">
+              <div
+                className={`flex items-center gap-1.5 p-1 rounded-xl border text-xs ${
+                  isDark ? "bg-slate-900 border-slate-800" : "bg-white border-slate-200 shadow-sm"
+                }`}
+              >
                 {["all", "new", "preparing", "ready", "served", "paid"].map((st) => {
                   const isSel = orderFilter === st;
                   return (
@@ -810,7 +922,11 @@ export default function RestaurantAdminPortal() {
                       onClick={() => setOrderFilter(st)}
                       style={isSel ? { backgroundColor: themeColor, color: contrastText } : {}}
                       className={`px-3 py-1.5 rounded-lg capitalize font-medium transition cursor-pointer ${
-                        isSel ? "font-bold shadow-sm" : "text-slate-400 hover:text-white"
+                        isSel
+                          ? "font-bold shadow-sm"
+                          : isDark
+                          ? "text-slate-400 hover:text-white"
+                          : "text-slate-600 hover:text-slate-900"
                       }`}
                     >
                       {st}
@@ -823,40 +939,61 @@ export default function RestaurantAdminPortal() {
             {/* Orders Grid */}
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-5">
               {filteredOrders.length === 0 ? (
-                <div className="col-span-full py-16 text-center text-slate-500 bg-slate-900/40 rounded-2xl border border-slate-800">
-                  <Receipt className="w-12 h-12 mx-auto mb-3 text-slate-600" />
+                <div
+                  className={`col-span-full py-16 text-center rounded-2xl border ${
+                    isDark
+                      ? "text-slate-500 bg-slate-900/40 border-slate-800"
+                      : "text-slate-500 bg-white border-slate-200 shadow-sm"
+                  }`}
+                >
+                  <Receipt className="w-12 h-12 mx-auto mb-3 text-slate-400" />
                   <p className="text-sm font-medium">No active orders matching &quot;{orderFilter}&quot;</p>
                 </div>
               ) : (
                 filteredOrders.map((order) => {
                   const statusColors: Record<string, string> = {
-                    new: "bg-blue-500/10 text-blue-400 border-blue-500/30",
-                    preparing: "bg-amber-500/10 text-amber-400 border-amber-500/30",
-                    ready: "bg-emerald-500/10 text-emerald-400 border-emerald-500/30",
-                    served: "bg-purple-500/10 text-purple-400 border-purple-500/30",
-                    paid: "bg-slate-800 text-slate-400 border-slate-700",
+                    new: "bg-blue-500/10 text-blue-500 border-blue-500/30",
+                    preparing: "bg-amber-500/10 text-amber-500 border-amber-500/30",
+                    ready: "bg-emerald-500/10 text-emerald-500 border-emerald-500/30",
+                    served: "bg-purple-500/10 text-purple-500 border-purple-500/30",
+                    paid: isDark
+                      ? "bg-slate-800 text-slate-400 border-slate-700"
+                      : "bg-slate-100 text-slate-600 border-slate-200",
                   };
 
                   return (
                     <div
                       key={order.id}
-                      className="bg-slate-900 border border-slate-800 rounded-2xl p-5 shadow-xl flex flex-col justify-between hover:border-slate-700 transition"
+                      className={`border rounded-2xl p-5 shadow-xl flex flex-col justify-between transition ${
+                        isDark
+                          ? "bg-slate-900 border-slate-800 hover:border-slate-700"
+                          : "bg-white border-slate-200 hover:border-slate-300 shadow-md"
+                      }`}
                     >
                       <div>
                         {/* Order Header */}
-                        <div className="flex items-center justify-between pb-3 border-b border-slate-800/80 mb-3">
+                        <div
+                          className={`flex items-center justify-between pb-3 border-b mb-3 ${
+                            isDark ? "border-slate-800/80" : "border-slate-200"
+                          }`}
+                        >
                           <div>
-                            <span
-                              className="font-mono text-xs font-bold"
-                              style={{ color: themeColor }}
-                            >
+                            <span className="font-mono text-xs font-bold" style={{ color: themeColor }}>
                               #{order.order_number}
                             </span>
-                            <div className="text-sm font-bold text-white mt-0.5">
+                            <div
+                              className={`text-sm font-bold mt-0.5 ${
+                                isDark ? "text-white" : "text-slate-900"
+                              }`}
+                            >
                               Table {order.table_number} • {order.customer_name}
                             </div>
                             {order.floor && (
-                              <div className="text-[10px] text-slate-400 font-mono mt-0.5">
+                              <div
+                                className={`text-[10px] font-mono mt-0.5 ${
+                                  isDark ? "text-slate-400" : "text-slate-500"
+                                }`}
+                              >
                                 {order.floor}
                               </div>
                             )}
@@ -874,29 +1011,34 @@ export default function RestaurantAdminPortal() {
                         <div className="space-y-2 mb-4">
                           {order.items.map((item, idx) => (
                             <div key={idx} className="flex justify-between text-xs">
-                              <span className="text-slate-300">
+                              <span className={isDark ? "text-slate-300" : "text-slate-700"}>
                                 <strong style={{ color: themeColor }} className="mr-1.5">
                                   {item.quantity}x
                                 </strong>
                                 {item.name}
                               </span>
-                              <span className="font-mono text-slate-400">₹{item.price * item.quantity}</span>
+                              <span
+                                className={`font-mono ${isDark ? "text-slate-400" : "text-slate-500"}`}
+                              >
+                                ₹{item.price * item.quantity}
+                              </span>
                             </div>
                           ))}
                         </div>
                       </div>
 
                       {/* Footer & Actions */}
-                      <div className="pt-3 border-t border-slate-800/80">
+                      <div className={`pt-3 border-t ${isDark ? "border-slate-800/80" : "border-slate-200"}`}>
                         <div className="flex items-center justify-between text-sm mb-3">
-                          <span className="text-xs text-slate-400 flex items-center gap-1">
+                          <span
+                            className={`text-xs flex items-center gap-1 ${
+                              isDark ? "text-slate-400" : "text-slate-500"
+                            }`}
+                          >
                             <Clock className="w-3.5 h-3.5" />
                             {order.created_at}
                           </span>
-                          <span
-                            className="font-serif font-bold text-base"
-                            style={{ color: themeColor }}
-                          >
+                          <span className="font-serif font-bold text-base" style={{ color: themeColor }}>
                             ₹{order.total.toLocaleString("en-IN")}
                           </span>
                         </div>
@@ -949,7 +1091,11 @@ export default function RestaurantAdminPortal() {
                             </button>
                           )}
                           {order.status === "paid" && (
-                            <div className="col-span-2 py-2 rounded-xl bg-slate-800/80 text-emerald-400 text-center font-mono text-xs flex items-center justify-center gap-1">
+                            <div
+                              className={`col-span-2 py-2 rounded-xl text-emerald-500 text-center font-mono text-xs flex items-center justify-center gap-1 ${
+                                isDark ? "bg-slate-800/80" : "bg-emerald-50 border border-emerald-200"
+                              }`}
+                            >
                               <CheckCircle2 className="w-3.5 h-3.5" /> Settled & Archived
                             </div>
                           )}
@@ -970,16 +1116,18 @@ export default function RestaurantAdminPortal() {
           <div className="space-y-6">
             <div className="flex items-center justify-between">
               <div>
-                <h2 className="text-xl font-bold font-serif text-white flex items-center gap-2">
-                  <Flame className="w-5 h-5 text-amber-400 animate-pulse" />
+                <h2 className={`text-xl font-bold font-serif flex items-center gap-2 ${isDark ? "text-white" : "text-slate-900"}`}>
+                  <Flame className="w-5 h-5 text-amber-500 animate-pulse" />
                   Live Kitchen Display Screen (KDS)
                 </h2>
-                <p className="text-xs text-slate-400">
+                <p className={`text-xs ${isDark ? "text-slate-400" : "text-slate-600"}`}>
                   Real-time ticket dispatch for chefs and line cooks at {tenant.name}.
                 </p>
               </div>
               <div
-                className="text-xs font-mono bg-slate-900 border border-slate-800 px-3 py-1.5 rounded-xl font-bold"
+                className={`text-xs font-mono px-3 py-1.5 rounded-xl font-bold border ${
+                  isDark ? "bg-slate-900 border-slate-800" : "bg-white border-slate-200 shadow-sm"
+                }`}
                 style={{ color: themeColor }}
               >
                 Active Fire Tickets: {orders.filter((o) => o.status === "preparing").length}
@@ -992,17 +1140,25 @@ export default function RestaurantAdminPortal() {
                 .map((order) => (
                   <div
                     key={order.id}
-                    className="bg-slate-900/90 border-2 border-amber-500/40 rounded-2xl p-5 shadow-2xl flex flex-col justify-between"
+                    className={`border-2 border-amber-500/50 rounded-2xl p-5 shadow-2xl flex flex-col justify-between ${
+                      isDark ? "bg-slate-900/95" : "bg-white"
+                    }`}
                   >
                     <div>
-                      <div className="flex items-center justify-between pb-3 border-b border-slate-800">
+                      <div
+                        className={`flex items-center justify-between pb-3 border-b ${
+                          isDark ? "border-slate-800" : "border-slate-200"
+                        }`}
+                      >
                         <div>
-                          <span className="text-xs font-mono font-bold text-amber-400">
+                          <span className="text-xs font-mono font-bold text-amber-500">
                             Ticket #{order.order_number}
                           </span>
-                          <h3 className="text-lg font-black text-white">Table {order.table_number}</h3>
+                          <h3 className={`text-lg font-black ${isDark ? "text-white" : "text-slate-900"}`}>
+                            Table {order.table_number}
+                          </h3>
                         </div>
-                        <span className="px-2.5 py-1 rounded-full text-[10px] font-bold uppercase tracking-wider bg-amber-500/20 text-amber-300 border border-amber-500/40 flex items-center gap-1">
+                        <span className="px-2.5 py-1 rounded-full text-[10px] font-bold uppercase tracking-wider bg-amber-500/20 text-amber-600 border border-amber-500/40 flex items-center gap-1">
                           <Flame className="w-3 h-3 animate-bounce" />
                           On Fire
                         </span>
@@ -1012,9 +1168,13 @@ export default function RestaurantAdminPortal() {
                         {order.items.map((item, idx) => (
                           <div
                             key={idx}
-                            className="flex items-center justify-between p-2 rounded-xl bg-slate-950/60 border border-slate-800/80"
+                            className={`flex items-center justify-between p-2 rounded-xl border ${
+                              isDark
+                                ? "bg-slate-950/60 border-slate-800/80 text-white"
+                                : "bg-slate-50 border-slate-200 text-slate-900"
+                            }`}
                           >
-                            <span className="text-sm font-bold text-white flex items-center gap-2">
+                            <span className="text-sm font-bold flex items-center gap-2">
                               <span
                                 className="w-6 h-6 rounded-lg flex items-center justify-center font-mono text-xs font-bold"
                                 style={{
@@ -1047,19 +1207,34 @@ export default function RestaurantAdminPortal() {
         )}
 
         {/* ========================================================== */}
-        {/* TAB 3: FLOOR & TABLE GRID (MULTI-FLOOR + STATUSES + ADD)    */}
+        {/* TAB 3: FLOOR & TABLE GRID (WITH TABLE QR SCANNERS)         */}
         {/* ========================================================== */}
         {activeTab === "tables" && (
           <div className="space-y-6">
             <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
               <div>
-                <h2 className="text-xl font-bold font-serif text-white">Dining Floor & Table Grid</h2>
-                <p className="text-xs text-slate-400">
-                  Multi-floor occupancy, seating capacity, table status transitions, and table layout.
+                <h2 className={`text-xl font-bold font-serif ${isDark ? "text-white" : "text-slate-900"}`}>
+                  Dining Floor & Table Grid
+                </h2>
+                <p className={`text-xs ${isDark ? "text-slate-400" : "text-slate-600"}`}>
+                  Live seating occupancy, multi-floor controls, and unique table QR scanners.
                 </p>
               </div>
 
-              <div className="flex items-center gap-3">
+              {/* Action Buttons: Batch Print All QR Scanners & Add Table */}
+              <div className="flex items-center gap-2.5">
+                <button
+                  onClick={() => setIsBatchQrOpen(true)}
+                  className={`px-3.5 py-2 rounded-xl text-xs font-bold flex items-center gap-1.5 border transition cursor-pointer shadow-sm ${
+                    isDark
+                      ? "bg-slate-800 hover:bg-slate-700 text-white border-slate-700"
+                      : "bg-white hover:bg-slate-50 text-slate-800 border-slate-300"
+                  }`}
+                >
+                  <Printer className="w-4 h-4 text-amber-500" />
+                  <span>Batch Print QR Standees</span>
+                </button>
+
                 <button
                   onClick={() => setIsAddTableOpen(true)}
                   style={{
@@ -1076,8 +1251,16 @@ export default function RestaurantAdminPortal() {
             </div>
 
             {/* Floor Tabs Selector */}
-            <div className="flex items-center gap-2 border-b border-slate-800 pb-3 overflow-x-auto">
-              <span className="text-xs text-slate-400 flex items-center gap-1.5 mr-2 shrink-0">
+            <div
+              className={`flex items-center gap-2 border-b pb-3 overflow-x-auto ${
+                isDark ? "border-slate-800" : "border-slate-200"
+              }`}
+            >
+              <span
+                className={`text-xs flex items-center gap-1.5 mr-2 shrink-0 ${
+                  isDark ? "text-slate-400" : "text-slate-600"
+                }`}
+              >
                 <Layers className="w-3.5 h-3.5" /> Floor:
               </span>
               <button
@@ -1090,7 +1273,9 @@ export default function RestaurantAdminPortal() {
                 className={`px-3 py-1.5 rounded-xl text-xs font-semibold shrink-0 transition cursor-pointer ${
                   selectedFloor === "all"
                     ? "font-bold shadow-md"
-                    : "text-slate-400 hover:text-white bg-slate-900/60"
+                    : isDark
+                    ? "text-slate-400 hover:text-white bg-slate-900/60"
+                    : "text-slate-600 hover:text-slate-900 bg-slate-200/60"
                 }`}
               >
                 All Floors ({tables.length})
@@ -1110,7 +1295,9 @@ export default function RestaurantAdminPortal() {
                     className={`px-3 py-1.5 rounded-xl text-xs font-semibold shrink-0 transition cursor-pointer ${
                       isSelected
                         ? "font-bold shadow-md"
-                        : "text-slate-400 hover:text-white bg-slate-900/60"
+                        : isDark
+                        ? "text-slate-400 hover:text-white bg-slate-900/60"
+                        : "text-slate-600 hover:text-slate-900 bg-slate-200/60"
                     }`}
                   >
                     {flr} ({count})
@@ -1120,7 +1307,13 @@ export default function RestaurantAdminPortal() {
             </div>
 
             {/* Status Legend */}
-            <div className="flex flex-wrap items-center gap-4 text-xs bg-slate-900/40 p-3 rounded-xl border border-slate-800">
+            <div
+              className={`flex flex-wrap items-center gap-4 text-xs p-3 rounded-xl border ${
+                isDark
+                  ? "bg-slate-900/40 border-slate-800 text-slate-300"
+                  : "bg-white border-slate-200 text-slate-700 shadow-sm"
+              }`}
+            >
               <span className="flex items-center gap-1.5">
                 <span className="w-3 h-3 rounded-full bg-emerald-500" />
                 Available ({tables.filter((t) => t.status === "available").length})
@@ -1143,16 +1336,24 @@ export default function RestaurantAdminPortal() {
             <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4">
               {filteredTables.map((tbl) => {
                 const borderMap: Record<string, string> = {
-                  available: "border-emerald-500/40 bg-emerald-950/10 hover:border-emerald-500",
-                  occupied: "border-rose-500/50 bg-rose-950/20 hover:border-rose-500",
-                  reserved: "border-amber-500/40 bg-amber-950/10 hover:border-amber-500",
-                  cleaning: "border-cyan-500/40 bg-cyan-950/10 hover:border-cyan-400",
+                  available: isDark
+                    ? "border-emerald-500/40 bg-emerald-950/10 hover:border-emerald-500"
+                    : "border-emerald-500/50 bg-emerald-50/70 hover:border-emerald-500",
+                  occupied: isDark
+                    ? "border-rose-500/50 bg-rose-950/20 hover:border-rose-500"
+                    : "border-rose-500/50 bg-rose-50/70 hover:border-rose-500",
+                  reserved: isDark
+                    ? "border-amber-500/40 bg-amber-950/10 hover:border-amber-500"
+                    : "border-amber-500/50 bg-amber-50/70 hover:border-amber-500",
+                  cleaning: isDark
+                    ? "border-cyan-500/40 bg-cyan-950/10 hover:border-cyan-400"
+                    : "border-cyan-500/50 bg-cyan-50/70 hover:border-cyan-400",
                 };
                 const badgeMap: Record<string, string> = {
-                  available: "bg-emerald-500/20 text-emerald-400 border border-emerald-500/30",
-                  occupied: "bg-rose-500/20 text-rose-300 border border-rose-500/30 font-bold",
-                  reserved: "bg-amber-500/20 text-amber-300 border border-amber-500/30",
-                  cleaning: "bg-cyan-500/20 text-cyan-300 border border-cyan-500/30",
+                  available: "bg-emerald-500/20 text-emerald-600 dark:text-emerald-400 border border-emerald-500/30",
+                  occupied: "bg-rose-500/20 text-rose-600 dark:text-rose-300 border border-rose-500/30 font-bold",
+                  reserved: "bg-amber-500/20 text-amber-600 dark:text-amber-300 border border-amber-500/30",
+                  cleaning: "bg-cyan-500/20 text-cyan-600 dark:text-cyan-300 border border-cyan-500/30",
                 };
 
                 return (
@@ -1164,7 +1365,7 @@ export default function RestaurantAdminPortal() {
                   >
                     <div>
                       <div className="flex items-center justify-between mb-2">
-                        <span className="font-mono text-xl font-black text-white">
+                        <span className={`font-mono text-xl font-black ${isDark ? "text-white" : "text-slate-900"}`}>
                           Table {tbl.table_number}
                         </span>
                         <div className="flex items-center gap-1">
@@ -1174,16 +1375,18 @@ export default function RestaurantAdminPortal() {
                           <button
                             onClick={() => handleDeleteTable(tbl.id, tbl.table_number)}
                             title="Delete Table"
-                            className="p-1 text-slate-500 hover:text-red-400 transition cursor-pointer"
+                            className="p-1 text-slate-400 hover:text-red-500 transition cursor-pointer"
                           >
                             <Trash2 className="w-3.5 h-3.5" />
                           </button>
                         </div>
                       </div>
 
-                      <div className="text-xs text-slate-400 space-y-0.5">
+                      <div className={`text-xs space-y-0.5 ${isDark ? "text-slate-400" : "text-slate-600"}`}>
                         <div className="flex items-center justify-between">
-                          <span>Capacity: <strong className="text-slate-200">{tbl.capacity} Pax</strong></span>
+                          <span>
+                            Capacity: <strong className={isDark ? "text-slate-200" : "text-slate-900"}>{tbl.capacity} Pax</strong>
+                          </span>
                           <span
                             className="text-[10px] font-mono px-1.5 py-0.5 rounded"
                             style={{
@@ -1195,33 +1398,48 @@ export default function RestaurantAdminPortal() {
                           </span>
                         </div>
                         {tbl.section && (
-                          <div className="text-[11px] text-slate-400">
-                            Section: <span className="text-slate-300">{tbl.section}</span>
+                          <div className="text-[11px]">
+                            Section: <span className={isDark ? "text-slate-300" : "text-slate-800"}>{tbl.section}</span>
                           </div>
                         )}
                         {tbl.guests_count && (
-                          <div className="text-[11px] text-rose-300 font-semibold">
+                          <div className="text-[11px] text-rose-500 font-semibold">
                             • {tbl.guests_count} Guests seated
                           </div>
                         )}
                         {tbl.occupied_since && (
-                          <div className="text-[10px] text-amber-400/80 flex items-center gap-1">
+                          <div className="text-[10px] text-amber-500 flex items-center gap-1">
                             <Clock className="w-3 h-3" /> {tbl.occupied_since}
                           </div>
                         )}
                       </div>
+
+                      {/* UNIQUE TABLE QR SCANNER BUTTON */}
+                      <div className="pt-3 mt-3 border-t border-dashed border-slate-700/60 dark:border-slate-800">
+                        <button
+                          onClick={() => setSelectedQrTable(tbl)}
+                          className={`w-full py-1.5 px-2.5 rounded-xl text-xs font-semibold flex items-center justify-center gap-1.5 border transition cursor-pointer shadow-sm ${
+                            isDark
+                              ? "bg-slate-950 hover:bg-slate-800 text-amber-400 border-amber-400/30"
+                              : "bg-white hover:bg-amber-50 text-amber-700 border-amber-500/40"
+                          }`}
+                        >
+                          <QrCode className="w-3.5 h-3.5" />
+                          <span>View Table QR Standee</span>
+                        </button>
+                      </div>
                     </div>
 
                     {/* Table Status Switchers */}
-                    <div className="pt-3 mt-3 border-t border-slate-800/60">
-                      <div className="text-[10px] text-slate-400 uppercase font-mono mb-1.5">Change Status:</div>
+                    <div className="pt-3 mt-3 border-t border-slate-700/40 dark:border-slate-800/60">
+                      <div className="text-[10px] uppercase font-mono mb-1.5 text-slate-400">Change Status:</div>
                       <div className="grid grid-cols-2 gap-1.5 text-[10px]">
                         <button
                           onClick={() => handleTableStatus(tbl.id, "available")}
                           className={`py-1 rounded-lg border font-semibold transition cursor-pointer ${
                             tbl.status === "available"
                               ? "bg-emerald-500 text-slate-950 border-emerald-400 font-bold"
-                              : "bg-emerald-950/30 text-emerald-300 border-emerald-500/20 hover:bg-emerald-900/40"
+                              : "bg-emerald-500/10 text-emerald-600 dark:text-emerald-300 border-emerald-500/20 hover:bg-emerald-500/20"
                           }`}
                         >
                           Available
@@ -1231,7 +1449,7 @@ export default function RestaurantAdminPortal() {
                           className={`py-1 rounded-lg border font-semibold transition cursor-pointer ${
                             tbl.status === "occupied"
                               ? "bg-rose-500 text-white border-rose-400 font-bold"
-                              : "bg-rose-950/30 text-rose-300 border-rose-500/20 hover:bg-rose-900/40"
+                              : "bg-rose-500/10 text-rose-600 dark:text-rose-300 border-rose-500/20 hover:bg-rose-500/20"
                           }`}
                         >
                           Occupied
@@ -1241,7 +1459,7 @@ export default function RestaurantAdminPortal() {
                           className={`py-1 rounded-lg border font-semibold transition cursor-pointer ${
                             tbl.status === "reserved"
                               ? "bg-amber-400 text-slate-950 border-amber-300 font-bold"
-                              : "bg-amber-950/30 text-amber-300 border-amber-500/20 hover:bg-amber-900/40"
+                              : "bg-amber-500/10 text-amber-600 dark:text-amber-300 border-amber-500/20 hover:bg-amber-500/20"
                           }`}
                         >
                           Reserved
@@ -1251,7 +1469,7 @@ export default function RestaurantAdminPortal() {
                           className={`py-1 rounded-lg border font-semibold transition cursor-pointer ${
                             tbl.status === "cleaning"
                               ? "bg-cyan-400 text-slate-950 border-cyan-300 font-bold"
-                              : "bg-cyan-950/30 text-cyan-300 border-cyan-500/20 hover:bg-cyan-900/40"
+                              : "bg-cyan-500/10 text-cyan-600 dark:text-cyan-300 border-cyan-500/20 hover:bg-cyan-500/20"
                           }`}
                         >
                           Cleaning
@@ -1263,12 +1481,177 @@ export default function RestaurantAdminPortal() {
               })}
             </div>
 
+            {/* ========================================================== */}
+            {/* MODAL 1: INDIVIDUAL TABLE QR SCANNER STANDEE              */}
+            {/* ========================================================== */}
+            {selectedQrTable && (
+              <div className="fixed inset-0 z-50 bg-black/80 backdrop-blur-sm flex items-center justify-center p-4">
+                <div
+                  className={`border rounded-3xl max-w-md w-full p-6 shadow-2xl relative animate-scaleIn ${
+                    isDark ? "bg-slate-900 border-slate-800 text-white" : "bg-white border-slate-200 text-slate-900"
+                  }`}
+                >
+                  <button
+                    onClick={() => setSelectedQrTable(null)}
+                    className="absolute right-4 top-4 p-1.5 rounded-full hover:bg-slate-800 text-slate-400 cursor-pointer"
+                  >
+                    <X className="w-5 h-5" />
+                  </button>
+
+                  {/* Standee Header */}
+                  <div className="text-center space-y-1 pb-4 border-b border-slate-800/80">
+                    <div
+                      className="w-12 h-12 rounded-2xl mx-auto flex items-center justify-center font-bold text-xl shadow-md mb-2"
+                      style={{ backgroundColor: themeColor, color: contrastText }}
+                    >
+                      <Store className="w-6 h-6" />
+                    </div>
+                    <h3 className="text-lg font-bold font-serif">{tenant.name}</h3>
+                    <p className="text-xs text-slate-400">{tenant.tagline || tenant.city}</p>
+                  </div>
+
+                  {/* Table Badge & QR Standee Box */}
+                  <div className="py-5 text-center space-y-3">
+                    <div className="inline-block px-4 py-1.5 rounded-full bg-amber-500/10 border border-amber-500/30 text-amber-400 font-mono text-sm font-bold tracking-wider uppercase">
+                      TABLE #{selectedQrTable.table_number}
+                    </div>
+                    <div className="text-xs text-slate-400">
+                      {selectedQrTable.floor} • {selectedQrTable.section || "Main Dining"} ({selectedQrTable.capacity} Pax)
+                    </div>
+
+                    {/* The Scannable QR Code */}
+                    <div className="p-4 bg-white rounded-2xl border-4 border-slate-200 shadow-inner inline-block mx-auto relative group">
+                      {/* eslint-disable-next-line @next/next/no-img-element */}
+                      <img
+                        src={getTableQrCodeImg(selectedQrTable.table_number, 240)}
+                        alt={`QR Code for Table ${selectedQrTable.table_number}`}
+                        className="w-48 h-48 mx-auto"
+                      />
+                      <div className="text-[10px] font-mono text-slate-500 mt-2">
+                        SCAN TO VIEW MENU & ORDER
+                      </div>
+                    </div>
+
+                    <p className="text-[11px] text-slate-400 max-w-xs mx-auto">
+                      Guests scan with their phone camera to open live dining menu & place tickets directly to the kitchen.
+                    </p>
+                  </div>
+
+                  {/* Actions Toolbar */}
+                  <div className="space-y-2 pt-2 border-t border-slate-800/80">
+                    <div className="grid grid-cols-2 gap-2">
+                      <button
+                        onClick={() => window.print()}
+                        className="py-2.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-white text-xs font-bold flex items-center justify-center gap-1.5 cursor-pointer shadow-sm"
+                      >
+                        <Printer className="w-4 h-4 text-amber-400" />
+                        <span>Print Standee</span>
+                      </button>
+
+                      <button
+                        onClick={() => copyTableLink(selectedQrTable.table_number)}
+                        className="py-2.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-white text-xs font-bold flex items-center justify-center gap-1.5 cursor-pointer shadow-sm"
+                      >
+                        {copiedLink ? <Check className="w-4 h-4 text-emerald-400" /> : <Copy className="w-4 h-4" />}
+                        <span>{copiedLink ? "Link Copied!" : "Copy Order Link"}</span>
+                      </button>
+                    </div>
+
+                    <a
+                      href={getTableOrderingUrl(selectedQrTable.table_number)}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      style={{ backgroundColor: themeColor, color: contrastText }}
+                      className="w-full py-2.5 rounded-xl font-bold text-xs flex items-center justify-center gap-2 cursor-pointer shadow-md hover:brightness-110"
+                    >
+                      <ExternalLink className="w-4 h-4" />
+                      <span>Test Scan / Launch Live Guest Menu</span>
+                    </a>
+                  </div>
+                </div>
+              </div>
+            )}
+
+            {/* ========================================================== */}
+            {/* MODAL 2: BATCH PRINT ALL TABLE QR SCANNERS                */}
+            {/* ========================================================== */}
+            {isBatchQrOpen && (
+              <div className="fixed inset-0 z-50 bg-black/85 backdrop-blur-sm flex items-center justify-center p-4">
+                <div
+                  className={`border rounded-3xl max-w-4xl w-full max-h-[90vh] flex flex-col p-6 shadow-2xl relative ${
+                    isDark ? "bg-slate-900 border-slate-800 text-white" : "bg-white border-slate-200 text-slate-900"
+                  }`}
+                >
+                  <div className="flex items-center justify-between pb-4 border-b border-slate-800">
+                    <div>
+                      <h3 className="text-lg font-bold font-serif flex items-center gap-2">
+                        <Printer className="w-5 h-5 text-amber-500" />
+                        Batch Print Table QR Standees — {tenant.name}
+                      </h3>
+                      <p className="text-xs text-slate-400">
+                        Printable standee cards for all {tables.length} tables to laminate or place in acrylic table tents.
+                      </p>
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <button
+                        onClick={() => window.print()}
+                        style={{ backgroundColor: themeColor, color: contrastText }}
+                        className="px-4 py-2 rounded-xl text-xs font-bold flex items-center gap-1.5 shadow-md hover:brightness-110 cursor-pointer"
+                      >
+                        <Printer className="w-4 h-4" />
+                        <span>Print All Sheets</span>
+                      </button>
+                      <button
+                        onClick={() => setIsBatchQrOpen(false)}
+                        className="p-1.5 rounded-lg hover:bg-slate-800 text-slate-400 cursor-pointer"
+                      >
+                        <X className="w-5 h-5" />
+                      </button>
+                    </div>
+                  </div>
+
+                  {/* Batch Cards Grid */}
+                  <div className="flex-1 overflow-y-auto py-5 grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-4">
+                    {tables.map((t) => (
+                      <div
+                        key={t.id}
+                        className="p-5 rounded-2xl bg-white text-slate-900 border-2 border-slate-300 text-center space-y-2 shadow-md"
+                      >
+                        <div className="font-serif font-black text-xs text-slate-700 tracking-wider uppercase">
+                          {tenant.name}
+                        </div>
+                        <div className="inline-block px-3 py-1 rounded-full bg-slate-900 text-white font-mono text-sm font-bold">
+                          TABLE #{t.table_number}
+                        </div>
+                        <div className="text-[11px] text-slate-500 font-mono">
+                          {t.floor} • {t.section}
+                        </div>
+                        {/* eslint-disable-next-line @next/next/no-img-element */}
+                        <img
+                          src={getTableQrCodeImg(t.table_number, 180)}
+                          alt={`QR Table ${t.table_number}`}
+                          className="w-36 h-36 mx-auto my-1"
+                        />
+                        <div className="text-[10px] font-bold tracking-wider text-slate-600 uppercase">
+                          Scan to Browse Menu & Order
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              </div>
+            )}
+
             {/* Modal: Add Table */}
             {isAddTableOpen && (
               <div className="fixed inset-0 z-50 bg-black/75 backdrop-blur-sm flex items-center justify-center p-4">
-                <div className="bg-slate-900 border border-slate-800 rounded-2xl p-6 max-w-md w-full shadow-2xl">
+                <div
+                  className={`border rounded-2xl p-6 max-w-md w-full shadow-2xl ${
+                    isDark ? "bg-slate-900 border-slate-800 text-white" : "bg-white border-slate-200 text-slate-900"
+                  }`}
+                >
                   <div className="flex items-center justify-between pb-3 border-b border-slate-800 mb-4">
-                    <h3 className="text-base font-bold text-white flex items-center gap-2">
+                    <h3 className="text-base font-bold flex items-center gap-2">
                       <LayoutGrid className="w-5 h-5" style={{ color: themeColor }} />
                       Add Dining Table
                     </h3>
@@ -1283,22 +1666,26 @@ export default function RestaurantAdminPortal() {
                   <form onSubmit={handleCreateTable} className="space-y-4">
                     <div className="grid grid-cols-2 gap-3">
                       <div>
-                        <label className="block text-xs font-medium text-slate-300 mb-1">Table Number</label>
+                        <label className="block text-xs font-medium mb-1">Table Number</label>
                         <input
                           type="number"
                           required
                           min={1}
                           value={newTable.table_number}
                           onChange={(e) => setNewTable({ ...newTable, table_number: Number(e.target.value) })}
-                          className="w-full bg-slate-950 border border-slate-700 rounded-xl px-3 py-2 text-sm text-white font-mono"
+                          className={`w-full border rounded-xl px-3 py-2 text-sm font-mono ${
+                            isDark ? "bg-slate-950 border-slate-700 text-white" : "bg-slate-50 border-slate-300 text-slate-900"
+                          }`}
                         />
                       </div>
                       <div>
-                        <label className="block text-xs font-medium text-slate-300 mb-1">Seating Capacity (Pax)</label>
+                        <label className="block text-xs font-medium mb-1">Capacity (Pax)</label>
                         <select
                           value={newTable.capacity}
                           onChange={(e) => setNewTable({ ...newTable, capacity: Number(e.target.value) })}
-                          className="w-full bg-slate-950 border border-slate-700 rounded-xl px-3 py-2 text-sm text-white"
+                          className={`w-full border rounded-xl px-3 py-2 text-sm ${
+                            isDark ? "bg-slate-950 border-slate-700 text-white" : "bg-slate-50 border-slate-300 text-slate-900"
+                          }`}
                         >
                           <option value={2}>2 Pax (Couples)</option>
                           <option value={4}>4 Pax (Standard)</option>
@@ -1310,11 +1697,13 @@ export default function RestaurantAdminPortal() {
                     </div>
 
                     <div>
-                      <label className="block text-xs font-medium text-slate-300 mb-1">Floor Placement</label>
+                      <label className="block text-xs font-medium mb-1">Floor Placement</label>
                       <select
                         value={newTable.floor}
                         onChange={(e) => setNewTable({ ...newTable, floor: e.target.value })}
-                        className="w-full bg-slate-950 border border-slate-700 rounded-xl px-3 py-2 text-sm text-white"
+                        className={`w-full border rounded-xl px-3 py-2 text-sm ${
+                          isDark ? "bg-slate-950 border-slate-700 text-white" : "bg-slate-50 border-slate-300 text-slate-900"
+                        }`}
                       >
                         {floors.map((flr) => (
                           <option key={flr} value={flr}>{flr}</option>
@@ -1323,13 +1712,15 @@ export default function RestaurantAdminPortal() {
                     </div>
 
                     <div>
-                      <label className="block text-xs font-medium text-slate-300 mb-1">Section / Ambience Zone</label>
+                      <label className="block text-xs font-medium mb-1">Section / Ambience Zone</label>
                       <input
                         type="text"
                         placeholder="e.g. Window Deck, AC Family Hall, Patio"
                         value={newTable.section}
                         onChange={(e) => setNewTable({ ...newTable, section: e.target.value })}
-                        className="w-full bg-slate-950 border border-slate-700 rounded-xl px-3 py-2 text-sm text-white"
+                        className={`w-full border rounded-xl px-3 py-2 text-sm ${
+                          isDark ? "bg-slate-950 border-slate-700 text-white" : "bg-slate-50 border-slate-300 text-slate-900"
+                        }`}
                       />
                     </div>
 
@@ -1367,14 +1758,20 @@ export default function RestaurantAdminPortal() {
           <div className="space-y-6">
             <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
               <div>
-                <h2 className="text-xl font-bold font-serif text-white">Menu & Live Inventory Controls</h2>
-                <p className="text-xs text-slate-400">
+                <h2 className={`text-xl font-bold font-serif ${isDark ? "text-white" : "text-slate-900"}`}>
+                  Menu & Live Inventory Controls
+                </h2>
+                <p className={`text-xs ${isDark ? "text-slate-400" : "text-slate-600"}`}>
                   Manage dishes, real-time pricing, dietary tags, and raw material stock levels.
                 </p>
               </div>
 
               {/* Sub-tabs: Dishes vs Raw Stock */}
-              <div className="flex items-center gap-1.5 bg-slate-900 p-1 rounded-xl border border-slate-800 text-xs">
+              <div
+                className={`flex items-center gap-1.5 p-1 rounded-xl border text-xs ${
+                  isDark ? "bg-slate-900 border-slate-800" : "bg-white border-slate-200 shadow-sm"
+                }`}
+              >
                 <button
                   onClick={() => setMenuSubTab("dishes")}
                   style={
@@ -1385,7 +1782,9 @@ export default function RestaurantAdminPortal() {
                   className={`px-3 py-1.5 rounded-lg font-bold flex items-center gap-1.5 transition cursor-pointer ${
                     menuSubTab === "dishes"
                       ? "shadow-md"
-                      : "text-slate-400 hover:text-white"
+                      : isDark
+                      ? "text-slate-400 hover:text-white"
+                      : "text-slate-600 hover:text-slate-900"
                   }`}
                 >
                   <UtensilsCrossed className="w-3.5 h-3.5" />
@@ -1401,7 +1800,9 @@ export default function RestaurantAdminPortal() {
                   className={`px-3 py-1.5 rounded-lg font-bold flex items-center gap-1.5 transition cursor-pointer ${
                     menuSubTab === "inventory"
                       ? "shadow-md"
-                      : "text-slate-400 hover:text-white"
+                      : isDark
+                      ? "text-slate-400 hover:text-white"
+                      : "text-slate-600 hover:text-slate-900"
                   }`}
                 >
                   <Boxes className="w-3.5 h-3.5" />
@@ -1413,8 +1814,11 @@ export default function RestaurantAdminPortal() {
             {/* =================== SUBVIEW 1: DISHES =================== */}
             {menuSubTab === "dishes" && (
               <div className="space-y-4">
-                <div className="flex flex-wrap items-center justify-between gap-3 bg-slate-900/60 p-3 rounded-2xl border border-slate-800">
-                  {/* Search & Category Filter */}
+                <div
+                  className={`flex flex-wrap items-center justify-between gap-3 p-3 rounded-2xl border ${
+                    isDark ? "bg-slate-900/60 border-slate-800" : "bg-white border-slate-200 shadow-sm"
+                  }`}
+                >
                   <div className="flex flex-wrap items-center gap-2">
                     <div className="relative">
                       <Search className="w-4 h-4 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2" />
@@ -1423,14 +1827,20 @@ export default function RestaurantAdminPortal() {
                         placeholder="Search dish..."
                         value={menuSearch}
                         onChange={(e) => setMenuSearch(e.target.value)}
-                        className="bg-slate-950 border border-slate-800 rounded-xl pl-9 pr-3 py-1.5 text-xs text-white placeholder-slate-500 focus:outline-none focus:border-amber-400"
+                        className={`border rounded-xl pl-9 pr-3 py-1.5 text-xs focus:outline-none focus:border-amber-400 ${
+                          isDark
+                            ? "bg-slate-950 border-slate-800 text-white placeholder-slate-500"
+                            : "bg-slate-50 border-slate-300 text-slate-900 placeholder-slate-400"
+                        }`}
                       />
                     </div>
 
                     <select
                       value={menuCatFilter}
                       onChange={(e) => setMenuCatFilter(e.target.value)}
-                      className="bg-slate-950 border border-slate-800 rounded-xl px-3 py-1.5 text-xs text-white focus:outline-none focus:border-amber-400"
+                      className={`border rounded-xl px-3 py-1.5 text-xs focus:outline-none focus:border-amber-400 ${
+                        isDark ? "bg-slate-950 border-slate-800 text-white" : "bg-slate-50 border-slate-300 text-slate-900"
+                      }`}
                     >
                       <option value="all">All Categories</option>
                       <option value="Starters">Starters</option>
@@ -1457,9 +1867,17 @@ export default function RestaurantAdminPortal() {
                 </div>
 
                 {/* Menu Items Table */}
-                <div className="bg-slate-900 border border-slate-800 rounded-2xl overflow-hidden shadow-xl">
+                <div
+                  className={`border rounded-2xl overflow-hidden shadow-xl ${
+                    isDark ? "bg-slate-900 border-slate-800" : "bg-white border-slate-200"
+                  }`}
+                >
                   <table className="w-full text-left text-xs">
-                    <thead className="bg-slate-950 border-b border-slate-800 text-slate-400 uppercase font-mono text-[11px]">
+                    <thead
+                      className={`border-b uppercase font-mono text-[11px] ${
+                        isDark ? "bg-slate-950 border-slate-800 text-slate-400" : "bg-slate-100 border-slate-200 text-slate-700"
+                      }`}
+                    >
                       <tr>
                         <th className="py-3.5 px-4">Dish Name</th>
                         <th className="py-3.5 px-4">Category</th>
@@ -1469,11 +1887,14 @@ export default function RestaurantAdminPortal() {
                         <th className="py-3.5 px-4 text-right">Actions</th>
                       </tr>
                     </thead>
-                    <tbody className="divide-y divide-slate-800/80">
+                    <tbody className={`divide-y ${isDark ? "divide-slate-800/80" : "divide-slate-200"}`}>
                       {filteredMenu.map((item) => (
-                        <tr key={item.id} className="hover:bg-slate-800/40 transition">
+                        <tr
+                          key={item.id}
+                          className={`transition ${isDark ? "hover:bg-slate-800/40" : "hover:bg-slate-50"}`}
+                        >
                           <td className="py-3.5 px-4">
-                            <div className="font-semibold text-white flex items-center gap-2">
+                            <div className={`font-semibold flex items-center gap-2 ${isDark ? "text-white" : "text-slate-900"}`}>
                               <span
                                 className={`w-2 h-2 rounded-full ${
                                   item.dietary === "veg" ? "bg-emerald-400" : "bg-red-400"
@@ -1485,26 +1906,27 @@ export default function RestaurantAdminPortal() {
                             <div className="text-[11px] text-slate-400 line-clamp-1">{item.description}</div>
                           </td>
                           <td className="py-3.5 px-4">
-                            <span className="px-2 py-0.5 rounded-full bg-slate-800 text-slate-300 font-mono text-[10px]">
+                            <span
+                              className={`px-2 py-0.5 rounded-full font-mono text-[10px] ${
+                                isDark ? "bg-slate-800 text-slate-300" : "bg-slate-100 text-slate-700"
+                              }`}
+                            >
                               {item.category}
                             </span>
                           </td>
                           <td className="py-3.5 px-4 text-slate-400 font-mono text-[11px]">
                             {item.prep_time_minutes || 15} mins
                           </td>
-                          <td
-                            className="py-3.5 px-4 font-mono font-bold text-sm"
-                            style={{ color: themeColor }}
-                          >
+                          <td className="py-3.5 px-4 font-mono font-bold text-sm" style={{ color: themeColor }}>
                             ₹{item.price}
                           </td>
                           <td className="py-3.5 px-4">
                             {item.is_available ? (
-                              <span className="px-2.5 py-1 rounded-full text-[10px] font-bold bg-emerald-500/10 text-emerald-400 border border-emerald-500/30">
+                              <span className="px-2.5 py-1 rounded-full text-[10px] font-bold bg-emerald-500/10 text-emerald-500 border border-emerald-500/30">
                                 Available
                               </span>
                             ) : (
-                              <span className="px-2.5 py-1 rounded-full text-[10px] font-bold bg-rose-500/10 text-rose-400 border border-rose-500/30">
+                              <span className="px-2.5 py-1 rounded-full text-[10px] font-bold bg-rose-500/10 text-rose-500 border border-rose-500/30">
                                 86&apos;d / Sold Out
                               </span>
                             )}
@@ -1514,8 +1936,8 @@ export default function RestaurantAdminPortal() {
                               onClick={() => handleToggleStock(item.id)}
                               className={`px-2.5 py-1 rounded-lg text-[11px] font-semibold transition cursor-pointer ${
                                 item.is_available
-                                  ? "bg-rose-500/10 hover:bg-rose-500/20 text-rose-300 border border-rose-500/30"
-                                  : "bg-emerald-500/10 hover:bg-emerald-500/20 text-emerald-300 border border-emerald-500/30"
+                                  ? "bg-rose-500/10 hover:bg-rose-500/20 text-rose-500 border border-rose-500/30"
+                                  : "bg-emerald-500/10 hover:bg-emerald-500/20 text-emerald-500 border border-emerald-500/30"
                               }`}
                             >
                               {item.is_available ? "Mark Sold Out" : "Mark Available"}
@@ -1525,14 +1947,16 @@ export default function RestaurantAdminPortal() {
                                 setEditingPriceItem(item);
                                 setNewPriceValue(item.price);
                               }}
-                              className="px-2.5 py-1 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-300 text-[11px] cursor-pointer"
+                              className={`px-2.5 py-1 rounded-lg text-[11px] cursor-pointer ${
+                                isDark ? "bg-slate-800 hover:bg-slate-700 text-slate-300" : "bg-slate-100 hover:bg-slate-200 text-slate-700"
+                              }`}
                             >
                               Edit Price
                             </button>
                             <button
                               onClick={() => handleDeleteDish(item.id, item.name)}
                               title="Delete Dish"
-                              className="p-1 rounded-lg text-slate-500 hover:text-red-400 transition cursor-pointer"
+                              className="p-1 rounded-lg text-slate-400 hover:text-red-500 transition cursor-pointer"
                             >
                               <Trash2 className="w-3.5 h-3.5 inline" />
                             </button>
@@ -1548,8 +1972,11 @@ export default function RestaurantAdminPortal() {
             {/* =================== SUBVIEW 2: RAW STOCK & INVENTORY =================== */}
             {menuSubTab === "inventory" && (
               <div className="space-y-4">
-                <div className="flex flex-wrap items-center justify-between gap-3 bg-slate-900/60 p-3 rounded-2xl border border-slate-800">
-                  {/* Search & Category Filter */}
+                <div
+                  className={`flex flex-wrap items-center justify-between gap-3 p-3 rounded-2xl border ${
+                    isDark ? "bg-slate-900/60 border-slate-800" : "bg-white border-slate-200 shadow-sm"
+                  }`}
+                >
                   <div className="flex flex-wrap items-center gap-2">
                     <div className="relative">
                       <Search className="w-4 h-4 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2" />
@@ -1558,14 +1985,20 @@ export default function RestaurantAdminPortal() {
                         placeholder="Search ingredient / item..."
                         value={inventorySearch}
                         onChange={(e) => setInventorySearch(e.target.value)}
-                        className="bg-slate-950 border border-slate-800 rounded-xl pl-9 pr-3 py-1.5 text-xs text-white placeholder-slate-500 focus:outline-none focus:border-amber-400"
+                        className={`border rounded-xl pl-9 pr-3 py-1.5 text-xs focus:outline-none focus:border-amber-400 ${
+                          isDark
+                            ? "bg-slate-950 border-slate-800 text-white placeholder-slate-500"
+                            : "bg-slate-50 border-slate-300 text-slate-900 placeholder-slate-400"
+                        }`}
                       />
                     </div>
 
                     <select
                       value={inventoryCatFilter}
                       onChange={(e) => setInventoryCatFilter(e.target.value)}
-                      className="bg-slate-950 border border-slate-800 rounded-xl px-3 py-1.5 text-xs text-white focus:outline-none focus:border-amber-400"
+                      className={`border rounded-xl px-3 py-1.5 text-xs focus:outline-none focus:border-amber-400 ${
+                        isDark ? "bg-slate-950 border-slate-800 text-white" : "bg-slate-50 border-slate-300 text-slate-900"
+                      }`}
                     >
                       <option value="all">All Categories</option>
                       <option value="Meat & Seafood">Meat & Seafood</option>
@@ -1591,9 +2024,17 @@ export default function RestaurantAdminPortal() {
                 </div>
 
                 {/* Inventory Table */}
-                <div className="bg-slate-900 border border-slate-800 rounded-2xl overflow-hidden shadow-xl">
+                <div
+                  className={`border rounded-2xl overflow-hidden shadow-xl ${
+                    isDark ? "bg-slate-900 border-slate-800" : "bg-white border-slate-200"
+                  }`}
+                >
                   <table className="w-full text-left text-xs">
-                    <thead className="bg-slate-950 border-b border-slate-800 text-slate-400 uppercase font-mono text-[11px]">
+                    <thead
+                      className={`border-b uppercase font-mono text-[11px] ${
+                        isDark ? "bg-slate-950 border-slate-800 text-slate-400" : "bg-slate-100 border-slate-200 text-slate-700"
+                      }`}
+                    >
                       <tr>
                         <th className="py-3.5 px-4">Raw Ingredient / Item</th>
                         <th className="py-3.5 px-4">Category</th>
@@ -1604,18 +2045,21 @@ export default function RestaurantAdminPortal() {
                         <th className="py-3.5 px-4 text-right">Quick Stock Adjust</th>
                       </tr>
                     </thead>
-                    <tbody className="divide-y divide-slate-800/80">
+                    <tbody className={`divide-y ${isDark ? "divide-slate-800/80" : "divide-slate-200"}`}>
                       {filteredInventory.map((item) => {
                         const statusBadge =
                           item.status === "in_stock"
-                            ? "bg-emerald-500/10 text-emerald-400 border-emerald-500/30"
+                            ? "bg-emerald-500/10 text-emerald-500 border-emerald-500/30"
                             : item.status === "low_stock"
-                            ? "bg-amber-500/10 text-amber-300 border-amber-500/30"
-                            : "bg-rose-500/10 text-rose-400 border-rose-500/30";
+                            ? "bg-amber-500/10 text-amber-500 border-amber-500/30"
+                            : "bg-rose-500/10 text-rose-500 border-rose-500/30";
 
                         return (
-                          <tr key={item.id} className="hover:bg-slate-800/40 transition">
-                            <td className="py-3.5 px-4 font-semibold text-white">
+                          <tr
+                            key={item.id}
+                            className={`transition ${isDark ? "hover:bg-slate-800/40" : "hover:bg-slate-50"}`}
+                          >
+                            <td className={`py-3.5 px-4 font-semibold ${isDark ? "text-white" : "text-slate-900"}`}>
                               {item.name}
                               {item.last_restocked && (
                                 <div className="text-[10px] text-slate-400 font-normal">
@@ -1624,20 +2068,21 @@ export default function RestaurantAdminPortal() {
                               )}
                             </td>
                             <td className="py-3.5 px-4">
-                              <span className="px-2 py-0.5 rounded-full bg-slate-800 text-slate-300 font-mono text-[10px]">
+                              <span
+                                className={`px-2 py-0.5 rounded-full font-mono text-[10px] ${
+                                  isDark ? "bg-slate-800 text-slate-300" : "bg-slate-100 text-slate-700"
+                                }`}
+                              >
                                 {item.category}
                               </span>
                             </td>
-                            <td
-                              className="py-3.5 px-4 font-mono font-bold text-sm"
-                              style={{ color: themeColor }}
-                            >
+                            <td className="py-3.5 px-4 font-mono font-bold text-sm" style={{ color: themeColor }}>
                               {item.quantity} {item.unit}
                             </td>
                             <td className="py-3.5 px-4 font-mono text-slate-400">
                               {item.reorder_level} {item.unit}
                             </td>
-                            <td className="py-3.5 px-4 font-mono text-slate-300">
+                            <td className={`py-3.5 px-4 font-mono ${isDark ? "text-slate-300" : "text-slate-700"}`}>
                               ₹{item.cost_per_unit}/{item.unit}
                             </td>
                             <td className="py-3.5 px-4">
@@ -1650,35 +2095,39 @@ export default function RestaurantAdminPortal() {
                                 <button
                                   onClick={() => handleAdjustStock(item.id, -5)}
                                   title="Consume 5 units"
-                                  className="w-7 h-7 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-300 font-mono font-bold text-xs flex items-center justify-center cursor-pointer"
+                                  className={`w-7 h-7 rounded-lg font-mono font-bold text-xs flex items-center justify-center cursor-pointer ${
+                                    isDark ? "bg-slate-800 hover:bg-slate-700 text-slate-300" : "bg-slate-100 hover:bg-slate-200 text-slate-700"
+                                  }`}
                                 >
                                   -5
                                 </button>
                                 <button
                                   onClick={() => handleAdjustStock(item.id, -1)}
                                   title="Consume 1 unit"
-                                  className="w-7 h-7 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-300 font-mono font-bold text-xs flex items-center justify-center cursor-pointer"
+                                  className={`w-7 h-7 rounded-lg font-mono font-bold text-xs flex items-center justify-center cursor-pointer ${
+                                    isDark ? "bg-slate-800 hover:bg-slate-700 text-slate-300" : "bg-slate-100 hover:bg-slate-200 text-slate-700"
+                                  }`}
                                 >
                                   -1
                                 </button>
                                 <button
                                   onClick={() => handleAdjustStock(item.id, 1)}
                                   title="Add 1 unit"
-                                  className="w-7 h-7 rounded-lg bg-emerald-500/20 hover:bg-emerald-500/30 text-emerald-300 font-mono font-bold text-xs flex items-center justify-center cursor-pointer"
+                                  className="w-7 h-7 rounded-lg bg-emerald-500/20 hover:bg-emerald-500/30 text-emerald-500 font-mono font-bold text-xs flex items-center justify-center cursor-pointer"
                                 >
                                   +1
                                 </button>
                                 <button
                                   onClick={() => handleAdjustStock(item.id, 5)}
                                   title="Add 5 units"
-                                  className="w-7 h-7 rounded-lg bg-emerald-500/20 hover:bg-emerald-500/30 text-emerald-300 font-mono font-bold text-xs flex items-center justify-center cursor-pointer"
+                                  className="w-7 h-7 rounded-lg bg-emerald-500/20 hover:bg-emerald-500/30 text-emerald-500 font-mono font-bold text-xs flex items-center justify-center cursor-pointer"
                                 >
                                   +5
                                 </button>
                                 <button
                                   onClick={() => handleDeleteInventory(item.id, item.name)}
                                   title="Remove item"
-                                  className="p-1.5 text-slate-500 hover:text-red-400 transition cursor-pointer"
+                                  className="p-1.5 text-slate-400 hover:text-red-500 transition cursor-pointer"
                                 >
                                   <Trash2 className="w-3.5 h-3.5" />
                                 </button>
@@ -1696,17 +2145,23 @@ export default function RestaurantAdminPortal() {
             {/* Quick Price Edit Modal */}
             {editingPriceItem && (
               <div className="fixed inset-0 z-50 bg-black/70 backdrop-blur-sm flex items-center justify-center p-4">
-                <div className="bg-slate-900 border border-slate-800 rounded-2xl p-6 max-w-sm w-full shadow-2xl">
-                  <h3 className="text-base font-bold text-white mb-1">Update Item Price</h3>
+                <div
+                  className={`border rounded-2xl p-6 max-w-sm w-full shadow-2xl ${
+                    isDark ? "bg-slate-900 border-slate-800 text-white" : "bg-white border-slate-200 text-slate-900"
+                  }`}
+                >
+                  <h3 className="text-base font-bold mb-1">Update Item Price</h3>
                   <p className="text-xs text-slate-400 mb-4">{editingPriceItem.name}</p>
 
                   <div className="mb-4">
-                    <label className="block text-xs font-medium text-slate-300 mb-1.5">New Price (INR ₹)</label>
+                    <label className="block text-xs font-medium mb-1.5">New Price (INR ₹)</label>
                     <input
                       type="number"
                       value={newPriceValue}
                       onChange={(e) => setNewPriceValue(Number(e.target.value))}
-                      className="w-full bg-slate-950 border border-slate-700 rounded-xl px-3 py-2 text-sm text-white font-mono"
+                      className={`w-full border rounded-xl px-3 py-2 text-sm font-mono ${
+                        isDark ? "bg-slate-950 border-slate-700 text-white" : "bg-slate-50 border-slate-300 text-slate-900"
+                      }`}
                     />
                   </div>
 
@@ -1732,9 +2187,13 @@ export default function RestaurantAdminPortal() {
             {/* Modal: Add New Dish */}
             {isAddDishOpen && (
               <div className="fixed inset-0 z-50 bg-black/75 backdrop-blur-sm flex items-center justify-center p-4">
-                <div className="bg-slate-900 border border-slate-800 rounded-2xl p-6 max-w-md w-full shadow-2xl">
+                <div
+                  className={`border rounded-2xl p-6 max-w-md w-full shadow-2xl ${
+                    isDark ? "bg-slate-900 border-slate-800 text-white" : "bg-white border-slate-200 text-slate-900"
+                  }`}
+                >
                   <div className="flex items-center justify-between pb-3 border-b border-slate-800 mb-4">
-                    <h3 className="text-base font-bold text-white flex items-center gap-2">
+                    <h3 className="text-base font-bold flex items-center gap-2">
                       <UtensilsCrossed className="w-5 h-5" style={{ color: themeColor }} />
                       Add New Restaurant Dish
                     </h3>
@@ -1748,24 +2207,28 @@ export default function RestaurantAdminPortal() {
 
                   <form onSubmit={handleCreateDish} className="space-y-4">
                     <div>
-                      <label className="block text-xs font-medium text-slate-300 mb-1">Dish Name</label>
+                      <label className="block text-xs font-medium mb-1">Dish Name</label>
                       <input
                         type="text"
                         required
                         placeholder="e.g. Gongura Mamsam, Hyderabadi Dum Biryani"
                         value={newDish.name}
                         onChange={(e) => setNewDish({ ...newDish, name: e.target.value })}
-                        className="w-full bg-slate-950 border border-slate-700 rounded-xl px-3 py-2 text-sm text-white"
+                        className={`w-full border rounded-xl px-3 py-2 text-sm ${
+                          isDark ? "bg-slate-950 border-slate-700 text-white" : "bg-slate-50 border-slate-300 text-slate-900"
+                        }`}
                       />
                     </div>
 
                     <div className="grid grid-cols-2 gap-3">
                       <div>
-                        <label className="block text-xs font-medium text-slate-300 mb-1">Category</label>
+                        <label className="block text-xs font-medium mb-1">Category</label>
                         <select
                           value={newDish.category}
                           onChange={(e) => setNewDish({ ...newDish, category: e.target.value as any })}
-                          className="w-full bg-slate-950 border border-slate-700 rounded-xl px-3 py-2 text-sm text-white"
+                          className={`w-full border rounded-xl px-3 py-2 text-sm ${
+                            isDark ? "bg-slate-950 border-slate-700 text-white" : "bg-slate-50 border-slate-300 text-slate-900"
+                          }`}
                         >
                           <option value="Starters">Starters</option>
                           <option value="Biryanis & Rice">Biryanis & Rice</option>
@@ -1777,25 +2240,29 @@ export default function RestaurantAdminPortal() {
                       </div>
 
                       <div>
-                        <label className="block text-xs font-medium text-slate-300 mb-1">Price (₹ INR)</label>
+                        <label className="block text-xs font-medium mb-1">Price (₹ INR)</label>
                         <input
                           type="number"
                           required
                           min={1}
                           value={newDish.price}
                           onChange={(e) => setNewDish({ ...newDish, price: Number(e.target.value) })}
-                          className="w-full bg-slate-950 border border-slate-700 rounded-xl px-3 py-2 text-sm text-white font-mono"
+                          className={`w-full border rounded-xl px-3 py-2 text-sm font-mono ${
+                            isDark ? "bg-slate-950 border-slate-700 text-white" : "bg-slate-50 border-slate-300 text-slate-900"
+                          }`}
                         />
                       </div>
                     </div>
 
                     <div className="grid grid-cols-2 gap-3">
                       <div>
-                        <label className="block text-xs font-medium text-slate-300 mb-1">Dietary Classification</label>
+                        <label className="block text-xs font-medium mb-1">Dietary Classification</label>
                         <select
                           value={newDish.dietary}
                           onChange={(e) => setNewDish({ ...newDish, dietary: e.target.value as any })}
-                          className="w-full bg-slate-950 border border-slate-700 rounded-xl px-3 py-2 text-sm text-white"
+                          className={`w-full border rounded-xl px-3 py-2 text-sm ${
+                            isDark ? "bg-slate-950 border-slate-700 text-white" : "bg-slate-50 border-slate-300 text-slate-900"
+                          }`}
                         >
                           <option value="veg">Vegetarian (Green)</option>
                           <option value="non-veg">Non-Vegetarian (Red)</option>
@@ -1803,25 +2270,29 @@ export default function RestaurantAdminPortal() {
                       </div>
 
                       <div>
-                        <label className="block text-xs font-medium text-slate-300 mb-1">Prep Time (mins)</label>
+                        <label className="block text-xs font-medium mb-1">Prep Time (mins)</label>
                         <input
                           type="number"
                           min={1}
                           value={newDish.prep_time_minutes}
                           onChange={(e) => setNewDish({ ...newDish, prep_time_minutes: Number(e.target.value) })}
-                          className="w-full bg-slate-950 border border-slate-700 rounded-xl px-3 py-2 text-sm text-white font-mono"
+                          className={`w-full border rounded-xl px-3 py-2 text-sm font-mono ${
+                            isDark ? "bg-slate-950 border-slate-700 text-white" : "bg-slate-50 border-slate-300 text-slate-900"
+                          }`}
                         />
                       </div>
                     </div>
 
                     <div>
-                      <label className="block text-xs font-medium text-slate-300 mb-1">Description / Ingredients</label>
+                      <label className="block text-xs font-medium mb-1">Description / Ingredients</label>
                       <textarea
                         rows={2}
                         placeholder="Key spices, taste profile, and allergen notes..."
                         value={newDish.description}
                         onChange={(e) => setNewDish({ ...newDish, description: e.target.value })}
-                        className="w-full bg-slate-950 border border-slate-700 rounded-xl px-3 py-2 text-xs text-white"
+                        className={`w-full border rounded-xl px-3 py-2 text-xs ${
+                          isDark ? "bg-slate-950 border-slate-700 text-white" : "bg-slate-50 border-slate-300 text-slate-900"
+                        }`}
                       />
                     </div>
 
@@ -1853,9 +2324,13 @@ export default function RestaurantAdminPortal() {
             {/* Modal: Add Raw Material */}
             {isAddInventoryOpen && (
               <div className="fixed inset-0 z-50 bg-black/75 backdrop-blur-sm flex items-center justify-center p-4">
-                <div className="bg-slate-900 border border-slate-800 rounded-2xl p-6 max-w-md w-full shadow-2xl">
+                <div
+                  className={`border rounded-2xl p-6 max-w-md w-full shadow-2xl ${
+                    isDark ? "bg-slate-900 border-slate-800 text-white" : "bg-white border-slate-200 text-slate-900"
+                  }`}
+                >
                   <div className="flex items-center justify-between pb-3 border-b border-slate-800 mb-4">
-                    <h3 className="text-base font-bold text-white flex items-center gap-2">
+                    <h3 className="text-base font-bold flex items-center gap-2">
                       <Boxes className="w-5 h-5" style={{ color: themeColor }} />
                       Add Raw Material to Inventory
                     </h3>
@@ -1869,24 +2344,28 @@ export default function RestaurantAdminPortal() {
 
                   <form onSubmit={handleCreateInventory} className="space-y-4">
                     <div>
-                      <label className="block text-xs font-medium text-slate-300 mb-1">Raw Ingredient / Material</label>
+                      <label className="block text-xs font-medium mb-1">Raw Ingredient / Material</label>
                       <input
                         type="text"
                         required
                         placeholder="e.g. Basmati Rice, Chicken Curry Cut, Pure Ghee"
                         value={newInventory.name}
                         onChange={(e) => setNewInventory({ ...newInventory, name: e.target.value })}
-                        className="w-full bg-slate-950 border border-slate-700 rounded-xl px-3 py-2 text-sm text-white"
+                        className={`w-full border rounded-xl px-3 py-2 text-sm ${
+                          isDark ? "bg-slate-950 border-slate-700 text-white" : "bg-slate-50 border-slate-300 text-slate-900"
+                        }`}
                       />
                     </div>
 
                     <div className="grid grid-cols-2 gap-3">
                       <div>
-                        <label className="block text-xs font-medium text-slate-300 mb-1">Category</label>
+                        <label className="block text-xs font-medium mb-1">Category</label>
                         <select
                           value={newInventory.category}
                           onChange={(e) => setNewInventory({ ...newInventory, category: e.target.value })}
-                          className="w-full bg-slate-950 border border-slate-700 rounded-xl px-3 py-2 text-sm text-white"
+                          className={`w-full border rounded-xl px-3 py-2 text-sm ${
+                            isDark ? "bg-slate-950 border-slate-700 text-white" : "bg-slate-50 border-slate-300 text-slate-900"
+                          }`}
                         >
                           <option value="Meat & Seafood">Meat & Seafood</option>
                           <option value="Grains & Spices">Grains & Spices</option>
@@ -1897,11 +2376,13 @@ export default function RestaurantAdminPortal() {
                       </div>
 
                       <div>
-                        <label className="block text-xs font-medium text-slate-300 mb-1">Unit of Measurement</label>
+                        <label className="block text-xs font-medium mb-1">Unit of Measurement</label>
                         <select
                           value={newInventory.unit}
                           onChange={(e) => setNewInventory({ ...newInventory, unit: e.target.value as any })}
-                          className="w-full bg-slate-950 border border-slate-700 rounded-xl px-3 py-2 text-sm text-white"
+                          className={`w-full border rounded-xl px-3 py-2 text-sm ${
+                            isDark ? "bg-slate-950 border-slate-700 text-white" : "bg-slate-50 border-slate-300 text-slate-900"
+                          }`}
                         >
                           <option value="kg">kg (Kilogram)</option>
                           <option value="g">g (Gram)</option>
@@ -1916,35 +2397,41 @@ export default function RestaurantAdminPortal() {
 
                     <div className="grid grid-cols-3 gap-3">
                       <div>
-                        <label className="block text-xs font-medium text-slate-300 mb-1">Stock Qty</label>
+                        <label className="block text-xs font-medium mb-1">Stock Qty</label>
                         <input
                           type="number"
                           required
                           value={newInventory.quantity}
                           onChange={(e) => setNewInventory({ ...newInventory, quantity: Number(e.target.value) })}
-                          className="w-full bg-slate-950 border border-slate-700 rounded-xl px-3 py-2 text-sm text-white font-mono"
+                          className={`w-full border rounded-xl px-3 py-2 text-sm font-mono ${
+                            isDark ? "bg-slate-950 border-slate-700 text-white" : "bg-slate-50 border-slate-300 text-slate-900"
+                          }`}
                         />
                       </div>
 
                       <div>
-                        <label className="block text-xs font-medium text-slate-300 mb-1">Reorder Level</label>
+                        <label className="block text-xs font-medium mb-1">Reorder Level</label>
                         <input
                           type="number"
                           required
                           value={newInventory.reorder_level}
                           onChange={(e) => setNewInventory({ ...newInventory, reorder_level: Number(e.target.value) })}
-                          className="w-full bg-slate-950 border border-slate-700 rounded-xl px-3 py-2 text-sm text-white font-mono"
+                          className={`w-full border rounded-xl px-3 py-2 text-sm font-mono ${
+                            isDark ? "bg-slate-950 border-slate-700 text-white" : "bg-slate-50 border-slate-300 text-slate-900"
+                          }`}
                         />
                       </div>
 
                       <div>
-                        <label className="block text-xs font-medium text-slate-300 mb-1">Cost / Unit (₹)</label>
+                        <label className="block text-xs font-medium mb-1">Cost / Unit (₹)</label>
                         <input
                           type="number"
                           required
                           value={newInventory.cost_per_unit}
                           onChange={(e) => setNewInventory({ ...newInventory, cost_per_unit: Number(e.target.value) })}
-                          className="w-full bg-slate-950 border border-slate-700 rounded-xl px-3 py-2 text-sm text-white font-mono"
+                          className={`w-full border rounded-xl px-3 py-2 text-sm font-mono ${
+                            isDark ? "bg-slate-950 border-slate-700 text-white" : "bg-slate-50 border-slate-300 text-slate-900"
+                          }`}
                         />
                       </div>
                     </div>
@@ -1983,8 +2470,10 @@ export default function RestaurantAdminPortal() {
           <div className="space-y-6">
             <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
               <div>
-                <h2 className="text-xl font-bold font-serif text-white">Staff Seats & Outlet Crew</h2>
-                <p className="text-xs text-slate-400">
+                <h2 className={`text-xl font-bold font-serif ${isDark ? "text-white" : "text-slate-900"}`}>
+                  Staff Seats & Outlet Crew
+                </h2>
+                <p className={`text-xs ${isDark ? "text-slate-400" : "text-slate-600"}`}>
                   Manage waiters, kitchen line chefs, cashiers, and floor captains for {tenant.name}.
                 </p>
               </div>
@@ -2005,14 +2494,16 @@ export default function RestaurantAdminPortal() {
 
             {/* Section A: Platform Back-Office Admins */}
             <div>
-              <h3 className="text-sm font-bold text-white uppercase tracking-wider font-mono mb-3 flex items-center gap-2">
+              <h3 className="text-sm font-bold uppercase tracking-wider font-mono mb-3 flex items-center gap-2">
                 <Shield className="w-4 h-4" style={{ color: themeColor }} /> Authorized Back-Office Admins
               </h3>
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 {adminsList.map((adm) => (
                   <div
                     key={adm.id}
-                    className="bg-slate-900 border border-slate-800 rounded-2xl p-5 shadow-xl flex items-center justify-between"
+                    className={`border rounded-2xl p-5 shadow-xl flex items-center justify-between ${
+                      isDark ? "bg-slate-900 border-slate-800" : "bg-white border-slate-200"
+                    }`}
                   >
                     <div className="flex items-center gap-3">
                       <div
@@ -2026,7 +2517,9 @@ export default function RestaurantAdminPortal() {
                         {adm.name.charAt(0)}
                       </div>
                       <div>
-                        <div className="font-semibold text-white text-sm">{adm.name}</div>
+                        <div className={`font-semibold text-sm ${isDark ? "text-white" : "text-slate-900"}`}>
+                          {adm.name}
+                        </div>
                         <div className="text-xs text-slate-400">{adm.email}</div>
                         <div
                           className="text-[10px] mt-1 uppercase font-mono font-medium"
@@ -2036,7 +2529,7 @@ export default function RestaurantAdminPortal() {
                         </div>
                       </div>
                     </div>
-                    <span className="px-2.5 py-1 rounded-full text-[10px] font-bold bg-emerald-500/10 text-emerald-400 border border-emerald-500/30">
+                    <span className="px-2.5 py-1 rounded-full text-[10px] font-bold bg-emerald-500/10 text-emerald-500 border border-emerald-500/30">
                       Authorized
                     </span>
                   </div>
@@ -2047,15 +2540,17 @@ export default function RestaurantAdminPortal() {
             {/* Section B: Operating Floor & Kitchen Staff */}
             <div>
               <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 mb-3">
-                <h3 className="text-sm font-bold text-white uppercase tracking-wider font-mono flex items-center gap-2">
-                  <Users className="w-4 h-4 text-emerald-400" /> Floor & Kitchen Crew ({staffList.length})
+                <h3 className="text-sm font-bold uppercase tracking-wider font-mono flex items-center gap-2">
+                  <Users className="w-4 h-4 text-emerald-500" /> Floor & Kitchen Crew ({staffList.length})
                 </h3>
 
                 {/* Filter */}
                 <select
                   value={staffRoleFilter}
                   onChange={(e) => setStaffRoleFilter(e.target.value)}
-                  className="bg-slate-900 border border-slate-800 rounded-xl px-3 py-1.5 text-xs text-white"
+                  className={`border rounded-xl px-3 py-1.5 text-xs ${
+                    isDark ? "bg-slate-900 border-slate-800 text-white" : "bg-white border-slate-300 text-slate-900"
+                  }`}
                 >
                   <option value="all">All Roles & Shifts</option>
                   <option value="Waiter">Waiters</option>
@@ -2072,46 +2567,52 @@ export default function RestaurantAdminPortal() {
               <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
                 {filteredStaff.map((staff) => {
                   const statusColors = {
-                    active: "bg-emerald-500/10 text-emerald-400 border-emerald-500/30",
-                    on_break: "bg-amber-500/10 text-amber-300 border-amber-500/30",
-                    inactive: "bg-rose-500/10 text-rose-400 border-rose-500/30",
+                    active: "bg-emerald-500/10 text-emerald-500 border-emerald-500/30",
+                    on_break: "bg-amber-500/10 text-amber-500 border-amber-500/30",
+                    inactive: "bg-rose-500/10 text-rose-500 border-rose-500/30",
                   };
 
                   return (
                     <div
                       key={staff.id}
-                      className="bg-slate-900 border border-slate-800 rounded-2xl p-4 shadow-xl flex flex-col justify-between hover:border-slate-700 transition"
+                      className={`border rounded-2xl p-4 shadow-xl flex flex-col justify-between transition ${
+                        isDark ? "bg-slate-900 border-slate-800 hover:border-slate-700" : "bg-white border-slate-200 hover:border-slate-300"
+                      }`}
                     >
                       <div>
                         <div className="flex items-center justify-between mb-2">
-                          <span className="font-bold text-white text-sm">{staff.name}</span>
+                          <span className={`font-bold text-sm ${isDark ? "text-white" : "text-slate-900"}`}>
+                            {staff.name}
+                          </span>
                           <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold uppercase border ${statusColors[staff.status]}`}>
                             {staff.status.replace("_", " ")}
                           </span>
                         </div>
 
-                        <div className="text-xs text-slate-400 space-y-1">
+                        <div className={`text-xs space-y-1 ${isDark ? "text-slate-400" : "text-slate-600"}`}>
                           <div className="font-semibold" style={{ color: themeColor }}>
                             {staff.role}
                           </div>
-                          <div>Phone: <span className="font-mono text-slate-300">{staff.phone}</span></div>
+                          <div>Phone: <span className="font-mono">{staff.phone}</span></div>
                           <div className="flex items-center justify-between text-[11px]">
-                            <span>Shift: <strong className="text-slate-300">{staff.shift}</strong></span>
-                            <span>Floor: <strong className="text-slate-300">{staff.assigned_floor || "Ground"}</strong></span>
+                            <span>Shift: <strong>{staff.shift}</strong></span>
+                            <span>Floor: <strong>{staff.assigned_floor || "Ground"}</strong></span>
                           </div>
                         </div>
                       </div>
 
-                      <div className="pt-3 mt-3 border-t border-slate-800/80 flex items-center justify-between text-xs">
+                      <div className={`pt-3 mt-3 border-t flex items-center justify-between text-xs ${isDark ? "border-slate-800/80" : "border-slate-200"}`}>
                         <button
                           onClick={() => handleToggleStaffStatus(staff.id, staff.status)}
-                          className="px-2.5 py-1 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-300 text-[11px] cursor-pointer"
+                          className={`px-2.5 py-1 rounded-lg text-[11px] cursor-pointer ${
+                            isDark ? "bg-slate-800 hover:bg-slate-700 text-slate-300" : "bg-slate-100 hover:bg-slate-200 text-slate-700"
+                          }`}
                         >
                           Change Status
                         </button>
                         <button
                           onClick={() => handleDeleteStaff(staff.id, staff.name)}
-                          className="p-1 text-slate-500 hover:text-red-400 cursor-pointer"
+                          className="p-1 text-slate-400 hover:text-red-500 cursor-pointer"
                         >
                           <Trash2 className="w-3.5 h-3.5" />
                         </button>
@@ -2125,9 +2626,13 @@ export default function RestaurantAdminPortal() {
             {/* Modal: Add Staff Member */}
             {isAddStaffOpen && (
               <div className="fixed inset-0 z-50 bg-black/75 backdrop-blur-sm flex items-center justify-center p-4">
-                <div className="bg-slate-900 border border-slate-800 rounded-2xl p-6 max-w-md w-full shadow-2xl">
+                <div
+                  className={`border rounded-2xl p-6 max-w-md w-full shadow-2xl ${
+                    isDark ? "bg-slate-900 border-slate-800 text-white" : "bg-white border-slate-200 text-slate-900"
+                  }`}
+                >
                   <div className="flex items-center justify-between pb-3 border-b border-slate-800 mb-4">
-                    <h3 className="text-base font-bold text-white flex items-center gap-2">
+                    <h3 className="text-base font-bold flex items-center gap-2">
                       <UserPlus className="w-5 h-5" style={{ color: themeColor }} />
                       Add Outlet Crew Member
                     </h3>
@@ -2141,24 +2646,28 @@ export default function RestaurantAdminPortal() {
 
                   <form onSubmit={handleCreateStaff} className="space-y-4">
                     <div>
-                      <label className="block text-xs font-medium text-slate-300 mb-1">Full Name</label>
+                      <label className="block text-xs font-medium mb-1">Full Name</label>
                       <input
                         type="text"
                         required
                         placeholder="e.g. Ramesh Kumar"
                         value={newStaff.name}
                         onChange={(e) => setNewStaff({ ...newStaff, name: e.target.value })}
-                        className="w-full bg-slate-950 border border-slate-700 rounded-xl px-3 py-2 text-sm text-white"
+                        className={`w-full border rounded-xl px-3 py-2 text-sm ${
+                          isDark ? "bg-slate-950 border-slate-700 text-white" : "bg-slate-50 border-slate-300 text-slate-900"
+                        }`}
                       />
                     </div>
 
                     <div className="grid grid-cols-2 gap-3">
                       <div>
-                        <label className="block text-xs font-medium text-slate-300 mb-1">Operational Role</label>
+                        <label className="block text-xs font-medium mb-1">Operational Role</label>
                         <select
                           value={newStaff.role}
                           onChange={(e) => setNewStaff({ ...newStaff, role: e.target.value as any })}
-                          className="w-full bg-slate-950 border border-slate-700 rounded-xl px-3 py-2 text-sm text-white"
+                          className={`w-full border rounded-xl px-3 py-2 text-sm ${
+                            isDark ? "bg-slate-950 border-slate-700 text-white" : "bg-slate-50 border-slate-300 text-slate-900"
+                          }`}
                         >
                           <option value="Waiter">Waiter / Server</option>
                           <option value="Kitchen Chef">Kitchen Chef / Cook</option>
@@ -2169,25 +2678,29 @@ export default function RestaurantAdminPortal() {
                       </div>
 
                       <div>
-                        <label className="block text-xs font-medium text-slate-300 mb-1">Phone Number</label>
+                        <label className="block text-xs font-medium mb-1">Phone Number</label>
                         <input
                           type="tel"
                           required
                           placeholder="+91 98765 43210"
                           value={newStaff.phone}
                           onChange={(e) => setNewStaff({ ...newStaff, phone: e.target.value })}
-                          className="w-full bg-slate-950 border border-slate-700 rounded-xl px-3 py-2 text-sm text-white"
+                          className={`w-full border rounded-xl px-3 py-2 text-sm ${
+                            isDark ? "bg-slate-950 border-slate-700 text-white" : "bg-slate-50 border-slate-300 text-slate-900"
+                          }`}
                         />
                       </div>
                     </div>
 
                     <div className="grid grid-cols-2 gap-3">
                       <div>
-                        <label className="block text-xs font-medium text-slate-300 mb-1">Shift</label>
+                        <label className="block text-xs font-medium mb-1">Shift</label>
                         <select
                           value={newStaff.shift}
                           onChange={(e) => setNewStaff({ ...newStaff, shift: e.target.value as any })}
-                          className="w-full bg-slate-950 border border-slate-700 rounded-xl px-3 py-2 text-sm text-white"
+                          className={`w-full border rounded-xl px-3 py-2 text-sm ${
+                            isDark ? "bg-slate-950 border-slate-700 text-white" : "bg-slate-50 border-slate-300 text-slate-900"
+                          }`}
                         >
                           <option value="Morning">Morning Shift (10 AM - 4 PM)</option>
                           <option value="Evening">Evening Shift (4 PM - 11:30 PM)</option>
@@ -2196,11 +2709,13 @@ export default function RestaurantAdminPortal() {
                       </div>
 
                       <div>
-                        <label className="block text-xs font-medium text-slate-300 mb-1">Assigned Floor</label>
+                        <label className="block text-xs font-medium mb-1">Assigned Floor</label>
                         <select
                           value={newStaff.assigned_floor}
                           onChange={(e) => setNewStaff({ ...newStaff, assigned_floor: e.target.value })}
-                          className="w-full bg-slate-950 border border-slate-700 rounded-xl px-3 py-2 text-sm text-white"
+                          className={`w-full border rounded-xl px-3 py-2 text-sm ${
+                            isDark ? "bg-slate-950 border-slate-700 text-white" : "bg-slate-50 border-slate-300 text-slate-900"
+                          }`}
                         >
                           {floors.map((flr) => (
                             <option key={flr} value={flr}>{flr}</option>
@@ -2242,35 +2757,46 @@ export default function RestaurantAdminPortal() {
         {activeTab === "sales" && (
           <div className="space-y-6">
             <div>
-              <h2 className="text-xl font-bold font-serif text-white">Daily Register & Revenue Breakdown</h2>
-              <p className="text-xs text-slate-400">
+              <h2 className={`text-xl font-bold font-serif ${isDark ? "text-white" : "text-slate-900"}`}>
+                Daily Register & Revenue Breakdown
+              </h2>
+              <p className={`text-xs ${isDark ? "text-slate-400" : "text-slate-600"}`}>
                 End-of-day register balancing and payment method analytics for {tenant.name}.
               </p>
             </div>
 
             <div className="grid grid-cols-1 sm:grid-cols-3 gap-5">
-              <div className="p-5 rounded-2xl bg-slate-900 border border-slate-800">
+              <div
+                className={`p-5 rounded-2xl border ${
+                  isDark ? "bg-slate-900 border-slate-800" : "bg-white border-slate-200 shadow-sm"
+                }`}
+              >
                 <div className="text-xs text-slate-400 mb-1">Gross Sales Today</div>
-                <div
-                  className="text-2xl font-bold font-serif"
-                  style={{ color: themeColor }}
-                >
+                <div className="text-2xl font-bold font-serif" style={{ color: themeColor }}>
                   ₹{totalRevenueToday.toLocaleString("en-IN")}
                 </div>
-                <div className="text-[11px] text-emerald-400 mt-1">↑ 18% vs yesterday</div>
+                <div className="text-[11px] text-emerald-500 mt-1">↑ 18% vs yesterday</div>
               </div>
 
-              <div className="p-5 rounded-2xl bg-slate-900 border border-slate-800">
+              <div
+                className={`p-5 rounded-2xl border ${
+                  isDark ? "bg-slate-900 border-slate-800" : "bg-white border-slate-200 shadow-sm"
+                }`}
+              >
                 <div className="text-xs text-slate-400 mb-1">Total Tables Billed</div>
-                <div className="text-2xl font-bold font-mono text-white">
+                <div className={`text-2xl font-bold font-mono ${isDark ? "text-white" : "text-slate-900"}`}>
                   {orders.length} Orders
                 </div>
                 <div className="text-[11px] text-slate-400 mt-1">Average Turn Time: 42 mins</div>
               </div>
 
-              <div className="p-5 rounded-2xl bg-slate-900 border border-slate-800">
+              <div
+                className={`p-5 rounded-2xl border ${
+                  isDark ? "bg-slate-900 border-slate-800" : "bg-white border-slate-200 shadow-sm"
+                }`}
+              >
                 <div className="text-xs text-slate-400 mb-1">Average Order Value (AOV)</div>
-                <div className="text-2xl font-bold font-mono text-white">
+                <div className={`text-2xl font-bold font-mono ${isDark ? "text-white" : "text-slate-900"}`}>
                   ₹{orders.length > 0 ? Math.round(totalRevenueToday / orders.length) : 0}
                 </div>
                 <div className="text-[11px] text-slate-400 mt-1">Fine Dining Standard</div>
@@ -2280,32 +2806,133 @@ export default function RestaurantAdminPortal() {
         )}
 
         {/* ========================================================== */}
-        {/* TAB 7: ACCOUNT, PASSWORD & RGB THEME CUSTOMIZER            */}
+        {/* TAB 7: ACCOUNT, PASSWORD, LIGHT/DARK & RGB THEME STUDIO   */}
         {/* ========================================================== */}
         {activeTab === "settings" && (
           <div className="space-y-8">
             <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
               <div>
-                <h2 className="text-xl font-bold font-serif text-white flex items-center gap-2">
+                <h2 className={`text-xl font-bold font-serif flex items-center gap-2 ${isDark ? "text-white" : "text-slate-900"}`}>
                   <SlidersHorizontal className="w-5 h-5" style={{ color: themeColor }} />
                   Account & Interface Settings
                 </h2>
-                <p className="text-xs text-slate-400">
-                  Update your admin security password, personalize your RGB theme accent, and manage restaurant details.
+                <p className={`text-xs ${isDark ? "text-slate-400" : "text-slate-600"}`}>
+                  Toggle Light/Dark mode, personalize your RGB theme accent, change admin password, and update business details.
                 </p>
               </div>
 
               {/* Current Active Theme Pill */}
-              <div className="flex items-center gap-2 bg-slate-900 px-3.5 py-1.5 rounded-2xl border border-slate-800 text-xs">
+              <div
+                className={`flex items-center gap-2 px-3.5 py-1.5 rounded-2xl border text-xs shadow-sm ${
+                  isDark ? "bg-slate-900 border-slate-800" : "bg-white border-slate-200"
+                }`}
+              >
                 <span className="text-slate-400">Current Theme:</span>
                 <span
                   className="w-3.5 h-3.5 rounded-full ring-1 ring-white/50"
                   style={{ backgroundColor: themeColor }}
                 />
-                <span className="font-mono font-bold text-white">{themeColor.toUpperCase()}</span>
+                <span className={`font-mono font-bold ${isDark ? "text-white" : "text-slate-900"}`}>
+                  {themeColor.toUpperCase()}
+                </span>
                 <span className="text-[11px] text-slate-500 font-mono">
                   rgb({themeRgb.r}, {themeRgb.g}, {themeRgb.b})
                 </span>
+              </div>
+            </div>
+
+            {/* LIGHT THEME VS DARK THEME TOGGLE CARD */}
+            <div
+              className={`border rounded-2xl p-6 shadow-xl space-y-4 ${
+                isDark ? "bg-slate-900 border-slate-800" : "bg-white border-slate-200"
+              }`}
+            >
+              <div className="flex items-center justify-between pb-3 border-b border-slate-800/80">
+                <div className="flex items-center gap-3">
+                  <div
+                    className="w-10 h-10 rounded-xl border flex items-center justify-center transition-colors"
+                    style={{
+                      backgroundColor: `rgba(${themeRgb.r}, ${themeRgb.g}, ${themeRgb.b}, 0.15)`,
+                      borderColor: `rgba(${themeRgb.r}, ${themeRgb.g}, ${themeRgb.b}, 0.35)`,
+                      color: themeColor,
+                    }}
+                  >
+                    {isDark ? <Moon className="w-5 h-5" /> : <Sun className="w-5 h-5" />}
+                  </div>
+                  <div>
+                    <h3 className={`text-base font-bold ${isDark ? "text-white" : "text-slate-900"}`}>
+                      Lighting Theme Mode
+                    </h3>
+                    <p className="text-xs text-slate-400">Choose between Midnight Dark Mode or Daylight Light Mode</p>
+                  </div>
+                </div>
+
+                <span
+                  className="text-xs font-mono font-bold uppercase px-3 py-1 rounded-full border"
+                  style={{
+                    backgroundColor: `rgba(${themeRgb.r}, ${themeRgb.g}, ${themeRgb.b}, 0.15)`,
+                    borderColor: themeColor,
+                    color: themeColor,
+                  }}
+                >
+                  Active: {isDark ? "Dark Theme" : "Light Theme"}
+                </span>
+              </div>
+
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                {/* Dark Mode Card */}
+                <button
+                  type="button"
+                  onClick={() => {
+                    setThemeMode("dark");
+                    if (typeof window !== "undefined") localStorage.setItem("clouddining_theme_mode", "dark");
+                  }}
+                  className={`p-4 rounded-2xl border text-left transition cursor-pointer flex items-start gap-3.5 ${
+                    isDark
+                      ? "border-amber-400 bg-slate-950/80 shadow-lg ring-2 ring-amber-400/20"
+                      : "border-slate-300 bg-slate-900 text-white hover:border-slate-400 opacity-70 hover:opacity-100"
+                  }`}
+                >
+                  <div className="w-10 h-10 rounded-xl bg-slate-900 text-amber-400 border border-slate-800 flex items-center justify-center shrink-0">
+                    <Moon className="w-5 h-5" />
+                  </div>
+                  <div>
+                    <div className="text-sm font-bold text-white flex items-center gap-2">
+                      <span>Midnight Dark Theme</span>
+                      {isDark && <CheckCircle2 className="w-4 h-4 text-amber-400" />}
+                    </div>
+                    <p className="text-xs text-slate-400 mt-1">
+                      Deep slate black canvas with warm ambient glow. Ideal for fine dining and evening services.
+                    </p>
+                  </div>
+                </button>
+
+                {/* Light Mode Card */}
+                <button
+                  type="button"
+                  onClick={() => {
+                    setThemeMode("light");
+                    if (typeof window !== "undefined") localStorage.setItem("clouddining_theme_mode", "light");
+                  }}
+                  className={`p-4 rounded-2xl border text-left transition cursor-pointer flex items-start gap-3.5 ${
+                    !isDark
+                      ? "border-amber-500 bg-amber-50/50 shadow-lg ring-2 ring-amber-500/20"
+                      : "border-slate-700 bg-white text-slate-900 hover:border-slate-600 opacity-70 hover:opacity-100"
+                  }`}
+                >
+                  <div className="w-10 h-10 rounded-xl bg-amber-100 text-amber-600 border border-amber-200 flex items-center justify-center shrink-0">
+                    <Sun className="w-5 h-5" />
+                  </div>
+                  <div>
+                    <div className={`text-sm font-bold flex items-center gap-2 ${!isDark ? "text-slate-900" : "text-slate-900"}`}>
+                      <span>Daylight Light Theme</span>
+                      {!isDark && <CheckCircle2 className="w-4 h-4 text-amber-600" />}
+                    </div>
+                    <p className="text-xs text-slate-500 mt-1">
+                      Crisp, high-contrast white & slate palette. Perfect for bright cashier desks and day bistros.
+                    </p>
+                  </div>
+                </button>
               </div>
             </div>
 
@@ -2313,8 +2940,12 @@ export default function RestaurantAdminPortal() {
               {/* ============================================ */}
               {/* CARD 1: ADMIN SECURITY & PASSWORD CHANGE    */}
               {/* ============================================ */}
-              <div className="bg-slate-900 border border-slate-800 rounded-2xl p-6 shadow-xl space-y-5">
-                <div className="flex items-center justify-between pb-3 border-b border-slate-800">
+              <div
+                className={`border rounded-2xl p-6 shadow-xl space-y-5 ${
+                  isDark ? "bg-slate-900 border-slate-800" : "bg-white border-slate-200"
+                }`}
+              >
+                <div className="flex items-center justify-between pb-3 border-b border-slate-800/80">
                   <div className="flex items-center gap-3">
                     <div
                       className="w-10 h-10 rounded-xl border flex items-center justify-center transition-colors"
@@ -2327,7 +2958,9 @@ export default function RestaurantAdminPortal() {
                       <Lock className="w-5 h-5" />
                     </div>
                     <div>
-                      <h3 className="text-base font-bold text-white">Admin Account & Security</h3>
+                      <h3 className={`text-base font-bold ${isDark ? "text-white" : "text-slate-900"}`}>
+                        Admin Account & Security
+                      </h3>
                       <p className="text-xs text-slate-400">Change your login password</p>
                     </div>
                   </div>
@@ -2337,39 +2970,42 @@ export default function RestaurantAdminPortal() {
                 </div>
 
                 {/* Logged in admin account identity badge */}
-                <div className="p-3.5 rounded-xl bg-slate-950/70 border border-slate-800 text-xs space-y-1">
+                <div
+                  className={`p-3.5 rounded-xl border text-xs space-y-1 ${
+                    isDark ? "bg-slate-950/70 border-slate-800" : "bg-slate-50 border-slate-200"
+                  }`}
+                >
                   <div className="flex items-center justify-between">
                     <span className="text-slate-400">Logged-in Administrator:</span>
-                    <span className="font-bold text-white">{session.name}</span>
+                    <span className={`font-bold ${isDark ? "text-white" : "text-slate-900"}`}>{session.name}</span>
                   </div>
                   <div className="flex items-center justify-between">
                     <span className="text-slate-400">Account Email:</span>
-                    <span className="font-mono text-amber-300">{session.email}</span>
+                    <span className="font-mono text-amber-500">{session.email}</span>
                   </div>
                   <div className="flex items-center justify-between">
                     <span className="text-slate-400">Managed Outlet:</span>
-                    <span className="text-slate-200">{tenant.name}</span>
+                    <span className={isDark ? "text-slate-200" : "text-slate-800"}>{tenant.name}</span>
                   </div>
                 </div>
 
                 {passwordError && (
-                  <div className="p-3 rounded-xl bg-red-500/10 border border-red-500/30 text-red-300 text-xs flex items-center gap-2">
-                    <AlertTriangle className="w-4 h-4 shrink-0 text-red-400" />
+                  <div className="p-3 rounded-xl bg-red-500/10 border border-red-500/30 text-red-400 text-xs flex items-center gap-2">
+                    <AlertTriangle className="w-4 h-4 shrink-0" />
                     <span>{passwordError}</span>
                   </div>
                 )}
 
                 {passwordSuccess && (
-                  <div className="p-3 rounded-xl bg-emerald-500/10 border border-emerald-500/30 text-emerald-300 text-xs flex items-center gap-2">
-                    <CheckCircle2 className="w-4 h-4 shrink-0 text-emerald-400" />
+                  <div className="p-3 rounded-xl bg-emerald-500/10 border border-emerald-500/30 text-emerald-500 text-xs flex items-center gap-2">
+                    <CheckCircle2 className="w-4 h-4 shrink-0" />
                     <span>{passwordSuccess}</span>
                   </div>
                 )}
 
                 <form onSubmit={handleChangePasswordSubmit} className="space-y-4">
-                  {/* Current Password */}
                   <div>
-                    <label className="block text-xs font-medium text-slate-300 mb-1">Current Password</label>
+                    <label className="block text-xs font-medium mb-1">Current Password</label>
                     <div className="relative">
                       <input
                         type={showCurrentPassword ? "text" : "password"}
@@ -2377,7 +3013,11 @@ export default function RestaurantAdminPortal() {
                         placeholder="Enter current password (or voucher password)"
                         value={currentPassword}
                         onChange={(e) => setCurrentPassword(e.target.value)}
-                        className="w-full bg-slate-950 border border-slate-700 rounded-xl pl-3 pr-10 py-2.5 text-xs text-white placeholder-slate-500 focus:outline-none focus:border-amber-400"
+                        className={`w-full border rounded-xl pl-3 pr-10 py-2.5 text-xs focus:outline-none focus:border-amber-400 ${
+                          isDark
+                            ? "bg-slate-950 border-slate-700 text-white placeholder-slate-500"
+                            : "bg-slate-50 border-slate-300 text-slate-900 placeholder-slate-400"
+                        }`}
                       />
                       <button
                         type="button"
@@ -2389,10 +3029,9 @@ export default function RestaurantAdminPortal() {
                     </div>
                   </div>
 
-                  {/* New Password */}
                   <div>
                     <div className="flex items-center justify-between mb-1">
-                      <label className="text-xs font-medium text-slate-300">New Password</label>
+                      <label className="text-xs font-medium">New Password</label>
                       {newPassword && (
                         <span className="text-[10px] text-slate-400">
                           Strength: <strong className="text-white">{passwordStrength.label}</strong>
@@ -2406,7 +3045,11 @@ export default function RestaurantAdminPortal() {
                         placeholder="Minimum 6 characters"
                         value={newPassword}
                         onChange={(e) => setNewPassword(e.target.value)}
-                        className="w-full bg-slate-950 border border-slate-700 rounded-xl pl-3 pr-10 py-2.5 text-xs text-white placeholder-slate-500 focus:outline-none focus:border-amber-400"
+                        className={`w-full border rounded-xl pl-3 pr-10 py-2.5 text-xs focus:outline-none focus:border-amber-400 ${
+                          isDark
+                            ? "bg-slate-950 border-slate-700 text-white placeholder-slate-500"
+                            : "bg-slate-50 border-slate-300 text-slate-900 placeholder-slate-400"
+                        }`}
                       />
                       <button
                         type="button"
@@ -2417,7 +3060,6 @@ export default function RestaurantAdminPortal() {
                       </button>
                     </div>
 
-                    {/* Password Strength Indicator */}
                     {newPassword && (
                       <div className="mt-1.5 flex gap-1 h-1">
                         <div className={`flex-1 rounded-full ${passwordStrength.score >= 1 ? passwordStrength.color : "bg-slate-800"}`} />
@@ -2427,16 +3069,19 @@ export default function RestaurantAdminPortal() {
                     )}
                   </div>
 
-                  {/* Confirm Password */}
                   <div>
-                    <label className="block text-xs font-medium text-slate-300 mb-1">Confirm New Password</label>
+                    <label className="block text-xs font-medium mb-1">Confirm New Password</label>
                     <input
                       type="password"
                       required
                       placeholder="Re-enter new password"
                       value={confirmPassword}
                       onChange={(e) => setConfirmPassword(e.target.value)}
-                      className="w-full bg-slate-950 border border-slate-700 rounded-xl px-3 py-2.5 text-xs text-white placeholder-slate-500 focus:outline-none focus:border-amber-400"
+                      className={`w-full border rounded-xl px-3 py-2.5 text-xs focus:outline-none focus:border-amber-400 ${
+                        isDark
+                          ? "bg-slate-950 border-slate-700 text-white placeholder-slate-500"
+                          : "bg-slate-50 border-slate-300 text-slate-900 placeholder-slate-400"
+                      }`}
                     />
                   </div>
 
@@ -2458,8 +3103,12 @@ export default function RestaurantAdminPortal() {
               {/* ============================================ */}
               {/* CARD 2: RGB THEME ENGINE & CUSTOMIZER       */}
               {/* ============================================ */}
-              <div className="bg-slate-900 border border-slate-800 rounded-2xl p-6 shadow-xl space-y-5">
-                <div className="flex items-center justify-between pb-3 border-b border-slate-800">
+              <div
+                className={`border rounded-2xl p-6 shadow-xl space-y-5 ${
+                  isDark ? "bg-slate-900 border-slate-800" : "bg-white border-slate-200"
+                }`}
+              >
+                <div className="flex items-center justify-between pb-3 border-b border-slate-800/80">
                   <div className="flex items-center gap-3">
                     <div
                       className="w-10 h-10 rounded-xl border flex items-center justify-center transition-colors"
@@ -2472,7 +3121,9 @@ export default function RestaurantAdminPortal() {
                       <Palette className="w-5 h-5" />
                     </div>
                     <div>
-                      <h3 className="text-base font-bold text-white">RGB Interface Theme Studio</h3>
+                      <h3 className={`text-base font-bold ${isDark ? "text-white" : "text-slate-900"}`}>
+                        RGB Interface Theme Studio
+                      </h3>
                       <p className="text-xs text-slate-400">Select any color code via RGB sliders or hex</p>
                     </div>
                   </div>
@@ -2483,15 +3134,18 @@ export default function RestaurantAdminPortal() {
                 </div>
 
                 {themeSuccess && (
-                  <div className="p-3 rounded-xl bg-emerald-500/10 border border-emerald-500/30 text-emerald-300 text-xs flex items-center gap-2">
-                    <CheckCircle2 className="w-4 h-4 shrink-0 text-emerald-400" />
+                  <div className="p-3 rounded-xl bg-emerald-500/10 border border-emerald-500/30 text-emerald-500 text-xs flex items-center gap-2">
+                    <CheckCircle2 className="w-4 h-4 shrink-0" />
                     <span>{themeSuccess}</span>
                   </div>
                 )}
 
                 {/* Live Color Input & Swatch Header */}
-                <div className="flex items-center gap-3 p-3 rounded-xl bg-slate-950 border border-slate-800">
-                  {/* Native HTML5 Color Picker */}
+                <div
+                  className={`flex items-center gap-3 p-3 rounded-xl border ${
+                    isDark ? "bg-slate-950 border-slate-800" : "bg-slate-50 border-slate-200"
+                  }`}
+                >
                   <div className="relative">
                     <input
                       type="color"
@@ -2510,12 +3164,14 @@ export default function RestaurantAdminPortal() {
                         value={themeColor}
                         onChange={(e) => handleHexInput(e.target.value)}
                         placeholder="#D4AF37"
-                        className="w-24 bg-slate-900 border border-slate-700 rounded-lg px-2 py-0.5 text-xs text-center font-mono font-bold text-white focus:outline-none focus:border-amber-400 uppercase"
+                        className={`w-24 border rounded-lg px-2 py-0.5 text-xs text-center font-mono font-bold uppercase focus:outline-none focus:border-amber-400 ${
+                          isDark ? "bg-slate-900 border-slate-700 text-white" : "bg-white border-slate-300 text-slate-900"
+                        }`}
                       />
                     </div>
                     <div className="flex items-center justify-between text-[11px]">
                       <span className="text-slate-400 uppercase font-mono">RGB Value:</span>
-                      <span className="font-mono font-semibold text-slate-200">
+                      <span className="font-mono font-semibold">
                         rgb({themeRgb.r}, {themeRgb.g}, {themeRgb.b})
                       </span>
                     </div>
@@ -2524,10 +3180,9 @@ export default function RestaurantAdminPortal() {
 
                 {/* 3 Interactive RGB Sliders */}
                 <div className="space-y-3 pt-1">
-                  {/* RED SLIDER */}
                   <div>
                     <div className="flex items-center justify-between text-xs mb-1">
-                      <span className="font-bold text-red-400 flex items-center gap-1.5">
+                      <span className="font-bold text-red-500 flex items-center gap-1.5">
                         <span className="w-2 h-2 rounded-full bg-red-500" /> Red Channel (R)
                       </span>
                       <input
@@ -2536,7 +3191,9 @@ export default function RestaurantAdminPortal() {
                         max={255}
                         value={themeRgb.r}
                         onChange={(e) => handleRgbSlider("r", Number(e.target.value))}
-                        className="w-14 bg-slate-950 border border-slate-700 rounded px-1.5 py-0.5 text-xs font-mono text-center text-white"
+                        className={`w-14 border rounded px-1.5 py-0.5 text-xs font-mono text-center ${
+                          isDark ? "bg-slate-950 border-slate-700 text-white" : "bg-white border-slate-300 text-slate-900"
+                        }`}
                       />
                     </div>
                     <input
@@ -2545,14 +3202,13 @@ export default function RestaurantAdminPortal() {
                       max={255}
                       value={themeRgb.r}
                       onChange={(e) => handleRgbSlider("r", Number(e.target.value))}
-                      className="w-full accent-red-500 cursor-pointer h-2 bg-slate-800 rounded-lg appearance-none"
+                      className="w-full accent-red-500 cursor-pointer h-2 bg-slate-700 rounded-lg appearance-none"
                     />
                   </div>
 
-                  {/* GREEN SLIDER */}
                   <div>
                     <div className="flex items-center justify-between text-xs mb-1">
-                      <span className="font-bold text-emerald-400 flex items-center gap-1.5">
+                      <span className="font-bold text-emerald-500 flex items-center gap-1.5">
                         <span className="w-2 h-2 rounded-full bg-emerald-500" /> Green Channel (G)
                       </span>
                       <input
@@ -2561,7 +3217,9 @@ export default function RestaurantAdminPortal() {
                         max={255}
                         value={themeRgb.g}
                         onChange={(e) => handleRgbSlider("g", Number(e.target.value))}
-                        className="w-14 bg-slate-950 border border-slate-700 rounded px-1.5 py-0.5 text-xs font-mono text-center text-white"
+                        className={`w-14 border rounded px-1.5 py-0.5 text-xs font-mono text-center ${
+                          isDark ? "bg-slate-950 border-slate-700 text-white" : "bg-white border-slate-300 text-slate-900"
+                        }`}
                       />
                     </div>
                     <input
@@ -2570,14 +3228,13 @@ export default function RestaurantAdminPortal() {
                       max={255}
                       value={themeRgb.g}
                       onChange={(e) => handleRgbSlider("g", Number(e.target.value))}
-                      className="w-full accent-emerald-500 cursor-pointer h-2 bg-slate-800 rounded-lg appearance-none"
+                      className="w-full accent-emerald-500 cursor-pointer h-2 bg-slate-700 rounded-lg appearance-none"
                     />
                   </div>
 
-                  {/* BLUE SLIDER */}
                   <div>
                     <div className="flex items-center justify-between text-xs mb-1">
-                      <span className="font-bold text-blue-400 flex items-center gap-1.5">
+                      <span className="font-bold text-blue-500 flex items-center gap-1.5">
                         <span className="w-2 h-2 rounded-full bg-blue-500" /> Blue Channel (B)
                       </span>
                       <input
@@ -2586,7 +3243,9 @@ export default function RestaurantAdminPortal() {
                         max={255}
                         value={themeRgb.b}
                         onChange={(e) => handleRgbSlider("b", Number(e.target.value))}
-                        className="w-14 bg-slate-950 border border-slate-700 rounded px-1.5 py-0.5 text-xs font-mono text-center text-white"
+                        className={`w-14 border rounded px-1.5 py-0.5 text-xs font-mono text-center ${
+                          isDark ? "bg-slate-950 border-slate-700 text-white" : "bg-white border-slate-300 text-slate-900"
+                        }`}
                       />
                     </div>
                     <input
@@ -2595,7 +3254,7 @@ export default function RestaurantAdminPortal() {
                       max={255}
                       value={themeRgb.b}
                       onChange={(e) => handleRgbSlider("b", Number(e.target.value))}
-                      className="w-full accent-blue-500 cursor-pointer h-2 bg-slate-800 rounded-lg appearance-none"
+                      className="w-full accent-blue-500 cursor-pointer h-2 bg-slate-700 rounded-lg appearance-none"
                     />
                   </div>
                 </div>
@@ -2616,17 +3275,14 @@ export default function RestaurantAdminPortal() {
                           title={`${th.name} (${th.hex})`}
                           className={`p-2 rounded-xl text-center border transition-all cursor-pointer flex flex-col items-center justify-center gap-1 ${
                             isCurrent
-                              ? "border-white bg-slate-800 shadow-lg scale-105"
-                              : "border-slate-800 bg-slate-950 hover:border-slate-700 hover:bg-slate-900"
+                              ? "border-amber-400 bg-slate-800 shadow-lg scale-105"
+                              : isDark
+                              ? "border-slate-800 bg-slate-950 hover:border-slate-700"
+                              : "border-slate-200 bg-slate-50 hover:border-slate-300"
                           }`}
                         >
-                          <span
-                            className="w-4 h-4 rounded-full shadow"
-                            style={{ backgroundColor: th.hex }}
-                          />
-                          <span className="text-[9px] font-medium text-slate-300 truncate w-full">
-                            {th.name.split(" ")[0]}
-                          </span>
+                          <span className="w-4 h-4 rounded-full shadow" style={{ backgroundColor: th.hex }} />
+                          <span className="text-[9px] font-medium truncate w-full">{th.name.split(" ")[0]}</span>
                         </button>
                       );
                     })}
@@ -2642,7 +3298,7 @@ export default function RestaurantAdminPortal() {
                   }}
                 >
                   <div className="text-[10px] uppercase font-mono font-bold text-slate-400 flex items-center justify-between">
-                    <span>Live Interface Theme Preview:</span>
+                    <span>Live Theme Preview:</span>
                     <span style={{ color: themeColor }}>Active Accent</span>
                   </div>
                   <div className="flex items-center gap-2">
@@ -2669,7 +3325,6 @@ export default function RestaurantAdminPortal() {
                   </div>
                 </div>
 
-                {/* Save Theme Button */}
                 <button
                   type="button"
                   onClick={handleSaveTheme}
@@ -2686,11 +3341,13 @@ export default function RestaurantAdminPortal() {
               </div>
             </div>
 
-            {/* ============================================ */}
-            {/* CARD 3: RESTAURANT PROFILE & BUSINESS DATA   */}
-            {/* ============================================ */}
-            <div className="bg-slate-900 border border-slate-800 rounded-2xl p-6 shadow-xl space-y-5">
-              <div className="flex items-center justify-between pb-3 border-b border-slate-800">
+            {/* CARD 3: RESTAURANT PROFILE & BUSINESS DETAILS */}
+            <div
+              className={`border rounded-2xl p-6 shadow-xl space-y-5 ${
+                isDark ? "bg-slate-900 border-slate-800" : "bg-white border-slate-200"
+              }`}
+            >
+              <div className="flex items-center justify-between pb-3 border-b border-slate-800/80">
                 <div className="flex items-center gap-3">
                   <div
                     className="w-10 h-10 rounded-xl border flex items-center justify-center transition-colors"
@@ -2703,15 +3360,17 @@ export default function RestaurantAdminPortal() {
                     <Store className="w-5 h-5" />
                   </div>
                   <div>
-                    <h3 className="text-base font-bold text-white">Restaurant Profile & Commercial Identity</h3>
+                    <h3 className={`text-base font-bold ${isDark ? "text-white" : "text-slate-900"}`}>
+                      Restaurant Profile & Commercial Identity
+                    </h3>
                     <p className="text-xs text-slate-400">Configure outlet display name, tagline, address & GSTIN</p>
                   </div>
                 </div>
               </div>
 
               {profileSuccess && (
-                <div className="p-3 rounded-xl bg-emerald-500/10 border border-emerald-500/30 text-emerald-300 text-xs flex items-center gap-2">
-                  <CheckCircle2 className="w-4 h-4 shrink-0 text-emerald-400" />
+                <div className="p-3 rounded-xl bg-emerald-500/10 border border-emerald-500/30 text-emerald-500 text-xs flex items-center gap-2">
+                  <CheckCircle2 className="w-4 h-4 shrink-0" />
                   <span>{profileSuccess}</span>
                 </div>
               )}
@@ -2719,100 +3378,120 @@ export default function RestaurantAdminPortal() {
               <form onSubmit={handleSaveProfile} className="space-y-4">
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                   <div>
-                    <label className="block text-xs font-medium text-slate-300 mb-1">Restaurant Display Name</label>
+                    <label className="block text-xs font-medium mb-1">Restaurant Display Name</label>
                     <input
                       type="text"
                       required
                       value={profileName}
                       onChange={(e) => setProfileName(e.target.value)}
-                      className="w-full bg-slate-950 border border-slate-700 rounded-xl px-3 py-2 text-xs text-white"
+                      className={`w-full border rounded-xl px-3 py-2 text-xs ${
+                        isDark ? "bg-slate-950 border-slate-700 text-white" : "bg-slate-50 border-slate-300 text-slate-900"
+                      }`}
                     />
                   </div>
 
                   <div>
-                    <label className="block text-xs font-medium text-slate-300 mb-1">Tagline / Brand Slogan</label>
+                    <label className="block text-xs font-medium mb-1">Tagline / Brand Slogan</label>
                     <input
                       type="text"
                       placeholder="e.g. Authentic Rayalaseema & Coastal Cuisine"
                       value={profileTagline}
                       onChange={(e) => setProfileTagline(e.target.value)}
-                      className="w-full bg-slate-950 border border-slate-700 rounded-xl px-3 py-2 text-xs text-white"
+                      className={`w-full border rounded-xl px-3 py-2 text-xs ${
+                        isDark ? "bg-slate-950 border-slate-700 text-white" : "bg-slate-50 border-slate-300 text-slate-900"
+                      }`}
                     />
                   </div>
                 </div>
 
                 <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
                   <div>
-                    <label className="block text-xs font-medium text-slate-300 mb-1">Contact Phone</label>
+                    <label className="block text-xs font-medium mb-1">Contact Phone</label>
                     <input
                       type="text"
                       value={profilePhone}
                       onChange={(e) => setProfilePhone(e.target.value)}
-                      className="w-full bg-slate-950 border border-slate-700 rounded-xl px-3 py-2 text-xs text-white font-mono"
+                      className={`w-full border rounded-xl px-3 py-2 text-xs font-mono ${
+                        isDark ? "bg-slate-950 border-slate-700 text-white" : "bg-slate-50 border-slate-300 text-slate-900"
+                      }`}
                     />
                   </div>
 
                   <div>
-                    <label className="block text-xs font-medium text-slate-300 mb-1">City / Region</label>
+                    <label className="block text-xs font-medium mb-1">City / Region</label>
                     <input
                       type="text"
                       value={profileCity}
                       onChange={(e) => setProfileCity(e.target.value)}
-                      className="w-full bg-slate-950 border border-slate-700 rounded-xl px-3 py-2 text-xs text-white"
+                      className={`w-full border rounded-xl px-3 py-2 text-xs ${
+                        isDark ? "bg-slate-950 border-slate-700 text-white" : "bg-slate-50 border-slate-300 text-slate-900"
+                      }`}
                     />
                   </div>
 
                   <div>
-                    <label className="block text-xs font-medium text-slate-300 mb-1">GSTIN / Tax ID</label>
+                    <label className="block text-xs font-medium mb-1">GSTIN / Tax ID</label>
                     <input
                       type="text"
                       placeholder="37ABCDE1234F1Z5"
                       value={profileGstin}
                       onChange={(e) => setProfileGstin(e.target.value)}
-                      className="w-full bg-slate-950 border border-slate-700 rounded-xl px-3 py-2 text-xs text-white font-mono uppercase"
+                      className={`w-full border rounded-xl px-3 py-2 text-xs font-mono uppercase ${
+                        isDark ? "bg-slate-950 border-slate-700 text-white" : "bg-slate-50 border-slate-300 text-slate-900"
+                      }`}
                     />
                   </div>
                 </div>
 
                 <div>
-                  <label className="block text-xs font-medium text-slate-300 mb-1">Full Street Address</label>
+                  <label className="block text-xs font-medium mb-1">Full Street Address</label>
                   <input
                     type="text"
                     value={profileAddress}
                     onChange={(e) => setProfileAddress(e.target.value)}
-                    className="w-full bg-slate-950 border border-slate-700 rounded-xl px-3 py-2 text-xs text-white"
+                    className={`w-full border rounded-xl px-3 py-2 text-xs ${
+                      isDark ? "bg-slate-950 border-slate-700 text-white" : "bg-slate-50 border-slate-300 text-slate-900"
+                    }`}
                   />
                 </div>
 
                 <div className="grid grid-cols-2 gap-4">
                   <div>
-                    <label className="block text-xs font-medium text-slate-300 mb-1">Service Charge %</label>
+                    <label className="block text-xs font-medium mb-1">Service Charge %</label>
                     <input
                       type="number"
                       min={0}
                       max={20}
                       value={profileServiceCharge}
                       onChange={(e) => setProfileServiceCharge(Number(e.target.value))}
-                      className="w-full bg-slate-950 border border-slate-700 rounded-xl px-3 py-2 text-xs text-white font-mono"
+                      className={`w-full border rounded-xl px-3 py-2 text-xs font-mono ${
+                        isDark ? "bg-slate-950 border-slate-700 text-white" : "bg-slate-50 border-slate-300 text-slate-900"
+                      }`}
                     />
                   </div>
 
                   <div>
-                    <label className="block text-xs font-medium text-slate-300 mb-1">GST %</label>
+                    <label className="block text-xs font-medium mb-1">GST %</label>
                     <input
                       type="number"
                       min={0}
                       max={28}
                       value={profileGst}
                       onChange={(e) => setProfileGst(Number(e.target.value))}
-                      className="w-full bg-slate-950 border border-slate-700 rounded-xl px-3 py-2 text-xs text-white font-mono"
+                      className={`w-full border rounded-xl px-3 py-2 text-xs font-mono ${
+                        isDark ? "bg-slate-950 border-slate-700 text-white" : "bg-slate-50 border-slate-300 text-slate-900"
+                      }`}
                     />
                   </div>
                 </div>
 
                 <button
                   type="submit"
-                  className="w-full py-2.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-white font-bold text-xs transition flex items-center justify-center gap-2 cursor-pointer border border-slate-700"
+                  className={`w-full py-2.5 rounded-xl font-bold text-xs transition flex items-center justify-center gap-2 cursor-pointer border ${
+                    isDark
+                      ? "bg-slate-800 hover:bg-slate-700 text-white border-slate-700"
+                      : "bg-slate-100 hover:bg-slate-200 text-slate-900 border-slate-300"
+                  }`}
                 >
                   <Check className="w-4 h-4" />
                   Save Restaurant Profile Details

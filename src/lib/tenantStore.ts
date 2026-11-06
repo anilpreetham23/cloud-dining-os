@@ -817,6 +817,57 @@ export function updateOrderStatus(orderId: string, newStatus: RestaurantOrder["s
   }
 }
 
+export function createGuestOrder(
+  restaurantId: string,
+  tableNumber: number,
+  customerName: string,
+  items: { id: string; name: string; price: number; quantity: number }[],
+  floor?: string
+): RestaurantOrder {
+  const total = items.reduce((sum, item) => sum + item.price * item.quantity, 0);
+  const newOrder: RestaurantOrder = {
+    id: `ord-${restaurantId}-${Date.now()}`,
+    restaurant_id: restaurantId,
+    order_number: (Math.floor(100 + Math.random() * 900)).toString(),
+    table_number: Number(tableNumber),
+    customer_name: customerName || `Table ${tableNumber} Guest`,
+    items,
+    total,
+    status: "new",
+    created_at: "Just now",
+    floor: floor || "Ground Floor",
+  };
+
+  if (typeof window !== "undefined") {
+    try {
+      const raw = localStorage.getItem(ORDERS_STORAGE_KEY);
+      const orders: RestaurantOrder[] = raw ? JSON.parse(raw) : DEFAULT_ORDERS;
+      localStorage.setItem(ORDERS_STORAGE_KEY, JSON.stringify([newOrder, ...orders]));
+
+      // Also set table status to occupied
+      const rawTables = localStorage.getItem(TABLES_STORAGE_KEY);
+      const tables: RestaurantTable[] = rawTables ? JSON.parse(rawTables) : DEFAULT_TABLES;
+      const updatedTables = tables.map((t) => {
+        if (t.restaurant_id === restaurantId && t.table_number === Number(tableNumber)) {
+          return {
+            ...t,
+            status: "occupied" as const,
+            guests_count: t.guests_count || 2,
+            occupied_since: "Just now",
+            current_order_id: newOrder.id,
+          };
+        }
+        return t;
+      });
+      localStorage.setItem(TABLES_STORAGE_KEY, JSON.stringify(updatedTables));
+    } catch (e) {
+      console.error("Failed to save guest order", e);
+    }
+  }
+
+  return newOrder;
+}
+
 // ----------------------------------------------------
 // MULTI-FLOOR TABLE MANAGEMENT
 // ----------------------------------------------------
