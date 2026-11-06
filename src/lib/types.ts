@@ -37,6 +37,14 @@ export interface TenantRestaurant {
     name: string;
     email: string;
   };
+  // Custom Profile & Branding
+  tagline?: string;
+  brand_color?: string; // hex code e.g. #D4AF37
+  gstin?: string;
+  service_charge_pct?: number;
+  gst_pct?: number;
+  floors?: string[]; // e.g. ["Ground Floor", "1st Floor - AC Dining", "Rooftop Terrace"]
+  opening_hours?: string;
 }
 
 export interface PlatformMetrics {
@@ -59,6 +67,7 @@ export interface RestaurantOrder {
   restaurant_id: string;
   order_number: string;
   table_number: number;
+  floor?: string;
   customer_name: string;
   items: RestaurantOrderItem[];
   total: number;
@@ -72,7 +81,9 @@ export interface RestaurantTable {
   restaurant_id: string;
   table_number: number;
   capacity: number;
-  status: "available" | "occupied" | "reserved";
+  floor: string; // e.g. "Ground Floor", "1st Floor", "Rooftop"
+  section?: string;
+  status: "available" | "occupied" | "reserved" | "cleaning";
   guests_count?: number;
   current_order_id?: string;
   occupied_since?: string;
@@ -87,6 +98,33 @@ export interface RestaurantMenuItem {
   is_available: boolean;
   description: string;
   dietary?: "veg" | "non-veg";
+  prep_time_minutes?: number;
+}
+
+export interface RestaurantInventoryItem {
+  id: string;
+  restaurant_id: string;
+  name: string;
+  category: string;
+  quantity: number;
+  unit: "kg" | "g" | "ltr" | "ml" | "pieces" | "packets" | "boxes";
+  reorder_level: number;
+  cost_per_unit: number;
+  status: "in_stock" | "low_stock" | "out_of_stock";
+  last_restocked?: string;
+}
+
+export interface RestaurantStaff {
+  id: string;
+  restaurant_id: string;
+  name: string;
+  role: "Waiter" | "Kitchen Chef" | "Cashier" | "Floor Captain" | "Store Manager";
+  phone: string;
+  email?: string;
+  pin?: string;
+  shift: "Morning" | "Evening" | "Full Day";
+  status: "active" | "on_break" | "inactive";
+  assigned_floor?: string;
 }
 
 export interface UserSession {
