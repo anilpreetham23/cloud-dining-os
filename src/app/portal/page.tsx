@@ -41,6 +41,11 @@ import {
   MapPin,
   Mail,
   Percent,
+  Sliders,
+  SlidersHorizontal,
+  UserCheck,
+  Lock,
+  KeyRound,
 } from "lucide-react";
 import {
   getActiveSession,
@@ -81,6 +86,63 @@ import {
   RestaurantStaff,
 } from "@/lib/types";
 
+// ====================================================
+// RGB & THEME UTILITIES
+// ====================================================
+function hexToRgb(hex: string): { r: number; g: number; b: number } {
+  let clean = (hex || "#D4AF37").replace("#", "").trim();
+  if (clean.length === 3) {
+    clean = clean.split("").map((c) => c + c).join("");
+  }
+  const num = parseInt(clean, 16);
+  if (isNaN(num)) return { r: 212, g: 175, b: 55 }; // Default Imperial Gold
+  return {
+    r: (num >> 16) & 255,
+    g: (num >> 8) & 255,
+    b: num & 255,
+  };
+}
+
+function rgbToHex(r: number, g: number, b: number): string {
+  const clamp = (v: number) => Math.max(0, Math.min(255, Math.round(v || 0)));
+  const toHex = (c: number) => clamp(c).toString(16).padStart(2, "0");
+  return `#${toHex(r)}${toHex(g)}${toHex(b)}`;
+}
+
+function getContrastTextColor(r: number, g: number, b: number): string {
+  // WCAG relative luminance formula
+  const y = (299 * r + 587 * g + 114 * b) / 1000;
+  return y > 155 ? "#060b13" : "#ffffff";
+}
+
+function getPasswordStrength(pass: string): { label: string; color: string; score: number } {
+  if (!pass) return { label: "", color: "bg-slate-700", score: 0 };
+  let score = 0;
+  if (pass.length >= 6) score += 1;
+  if (pass.length >= 8) score += 1;
+  if (/[0-9]/.test(pass)) score += 1;
+  if (/[A-Z]/.test(pass) && /[a-z]/.test(pass)) score += 1;
+  if (/[^A-Za-z0-9]/.test(pass)) score += 1;
+
+  if (score <= 1) return { label: "Weak (min 6 chars)", color: "bg-rose-500", score: 1 };
+  if (score <= 3) return { label: "Medium", color: "bg-amber-400", score: 2 };
+  return { label: "Strong", color: "bg-emerald-400", score: 3 };
+}
+
+// Curated luxury preset themes
+const LUXURY_THEMES = [
+  { name: "Imperial Gold", hex: "#D4AF37", r: 212, g: 175, b: 55 },
+  { name: "Emerald Jade", hex: "#10B981", r: 16, g: 185, b: 129 },
+  { name: "Cyber Amber", hex: "#F59E0B", r: 245, g: 158, b: 11 },
+  { name: "Royal Sapphire", hex: "#3B82F6", r: 59, g: 130, b: 246 },
+  { name: "Ruby Crimson", hex: "#EF4444", r: 239, g: 68, b: 68 },
+  { name: "Amethyst Violet", hex: "#8B5CF6", r: 139, g: 92, b: 246 },
+  { name: "Electric Teal", hex: "#06B6D4", r: 6, g: 182, b: 212 },
+  { name: "Rose Quartz", hex: "#F43F5E", r: 244, g: 63, b: 94 },
+  { name: "Neon Lime", hex: "#84CC16", r: 132, g: 204, b: 22 },
+  { name: "Deep Indigo", hex: "#6366F1", r: 99, g: 102, b: 241 },
+];
+
 export default function RestaurantAdminPortal() {
   const router = useRouter();
 
@@ -111,6 +173,11 @@ export default function RestaurantAdminPortal() {
   const [inventorySearch, setInventorySearch] = useState<string>("");
   const [inventoryCatFilter, setInventoryCatFilter] = useState<string>("all");
   const [staffRoleFilter, setStaffRoleFilter] = useState<string>("all");
+
+  // Dynamic RGB Theme state
+  const [themeColor, setThemeColor] = useState<string>("#D4AF37");
+  const [themeRgb, setThemeRgb] = useState<{ r: number; g: number; b: number }>({ r: 212, g: 175, b: 55 });
+  const [themeSuccess, setThemeSuccess] = useState<string>("");
 
   // Edit price modal state
   const [editingPriceItem, setEditingPriceItem] = useState<{ id: string; name: string; price: number } | null>(null);
@@ -194,7 +261,6 @@ export default function RestaurantAdminPortal() {
   const [profileGstin, setProfileGstin] = useState("");
   const [profileServiceCharge, setProfileServiceCharge] = useState(5);
   const [profileGst, setProfileGst] = useState(5);
-  const [profileBrandColor, setProfileBrandColor] = useState("#D4AF37");
   const [profileSuccess, setProfileSuccess] = useState("");
 
   // Load session & restaurant data
@@ -216,6 +282,11 @@ export default function RestaurantAdminPortal() {
       setAdminsList(allAdmins.filter((a) => a.restaurant_id === foundTenant.id));
       loadRestaurantData(foundTenant.id);
 
+      // Initialize theme color
+      const initialColor = foundTenant.brand_color || "#D4AF37";
+      setThemeColor(initialColor);
+      setThemeRgb(hexToRgb(initialColor));
+
       // Initialize profile fields
       setProfileName(foundTenant.name || "");
       setProfileTagline(foundTenant.tagline || "");
@@ -226,7 +297,6 @@ export default function RestaurantAdminPortal() {
       setProfileGstin(foundTenant.gstin || "");
       setProfileServiceCharge(foundTenant.service_charge_pct || 5);
       setProfileGst(foundTenant.gst_pct || 5);
-      setProfileBrandColor(foundTenant.brand_color || "#D4AF37");
     }
   }, [router]);
 
@@ -244,6 +314,40 @@ export default function RestaurantAdminPortal() {
     setMenuItems(getRestaurantMenu(restId));
     setInventoryItems(getRestaurantInventory(restId));
     setStaffList(getRestaurantStaff(restId));
+  };
+
+  // ====================================================
+  // RGB THEME HANDLERS
+  // ====================================================
+  const handleRgbSlider = (channel: "r" | "g" | "b", value: number) => {
+    const nextRgb = { ...themeRgb, [channel]: Math.max(0, Math.min(255, Number(value))) };
+    setThemeRgb(nextRgb);
+    const nextHex = rgbToHex(nextRgb.r, nextRgb.g, nextRgb.b);
+    setThemeColor(nextHex);
+  };
+
+  const handleHexInput = (hexVal: string) => {
+    setThemeColor(hexVal);
+    if (/^#[0-9A-Fa-f]{6}$/.test(hexVal)) {
+      setThemeRgb(hexToRgb(hexVal));
+    }
+  };
+
+  const handleSelectPresetTheme = (theme: typeof LUXURY_THEMES[0]) => {
+    setThemeColor(theme.hex);
+    setThemeRgb({ r: theme.r, g: theme.g, b: theme.b });
+  };
+
+  const handleSaveTheme = () => {
+    if (!tenant) return;
+    const result = updateRestaurantProfile(tenant.id, {
+      brand_color: themeColor,
+    });
+    if (result.success && result.tenant) {
+      setTenant(result.tenant);
+      setThemeSuccess(`RGB Theme (${themeColor}) applied and saved permanently!`);
+      setTimeout(() => setThemeSuccess(""), 4500);
+    }
   };
 
   // Orders handlers
@@ -425,11 +529,11 @@ export default function RestaurantAdminPortal() {
     }
 
     const emailToUse = session?.email || tenant?.email || tenant?.primary_admin?.email || "";
-    const result = changeAdminPassword(emailToUse, currentPassword, newPassword);
+    const result = changeAdminPassword(emailToUse, currentPassword, newPassword, tenant?.id);
     if (!result.success) {
       setPasswordError(result.error || "Failed to update password.");
     } else {
-      setPasswordSuccess("Password successfully updated! Keep your new credentials safe.");
+      setPasswordSuccess("Password successfully updated! You can now sign in with this new password.");
       setCurrentPassword("");
       setNewPassword("");
       setConfirmPassword("");
@@ -450,12 +554,12 @@ export default function RestaurantAdminPortal() {
       gstin: profileGstin.trim(),
       service_charge_pct: Number(profileServiceCharge),
       gst_pct: Number(profileGst),
-      brand_color: profileBrandColor,
+      brand_color: themeColor,
     });
 
     if (result.success && result.tenant) {
       setTenant(result.tenant);
-      setProfileSuccess("Restaurant profile and branding updated successfully!");
+      setProfileSuccess("Restaurant business details saved successfully!");
       setTimeout(() => setProfileSuccess(""), 4000);
     }
   };
@@ -488,6 +592,10 @@ export default function RestaurantAdminPortal() {
       </div>
     );
   }
+
+  // Dynamic contrast text for active theme
+  const contrastText = getContrastTextColor(themeRgb.r, themeRgb.g, themeRgb.b);
+  const passwordStrength = getPasswordStrength(newPassword);
 
   // Filtered lists
   const filteredOrders = orders.filter((o) => {
@@ -523,14 +631,22 @@ export default function RestaurantAdminPortal() {
   const occupiedTablesCount = tables.filter((t) => t.status === "occupied").length;
 
   return (
-    <div className="min-h-screen bg-[#070c16] text-slate-100 flex flex-col font-sans">
+    <div
+      className="min-h-screen bg-[#070c16] text-slate-100 flex flex-col font-sans transition-colors duration-300"
+      style={
+        {
+          "--theme-primary": themeColor,
+          "--theme-rgb": `${themeRgb.r}, ${themeRgb.g}, ${themeRgb.b}`,
+        } as React.CSSProperties
+      }
+    >
       {/* Super Admin Preview Alert Banner */}
       {session.isSuperAdminPreview && (
         <div className="bg-gradient-to-r from-amber-600 via-amber-500 to-amber-600 text-slate-950 px-4 py-2 text-xs font-bold flex items-center justify-between shadow-lg">
           <div className="flex items-center gap-2">
             <Sparkles className="w-4 h-4 shrink-0" />
             <span>
-              SUPER ADMIN COCKPIT VIEW: Bobby (Platform Head) is inspecting{" "}
+              SUPER ADMIN COCKPIT VIEW: Bobby (Platform Head) is previewing{" "}
               <strong className="underline">{tenant.name}</strong>.
             </span>
           </div>
@@ -547,13 +663,15 @@ export default function RestaurantAdminPortal() {
       {/* Top Main Navigation Bar */}
       <header className="bg-slate-900/90 border-b border-slate-800 sticky top-0 z-30 backdrop-blur-md px-6 py-3.5">
         <div className="max-w-7xl mx-auto flex flex-col md:flex-row md:items-center justify-between gap-4">
-          {/* Restaurant Profile */}
+          {/* Restaurant Profile with Dynamic RGB Emblem */}
           <div className="flex items-center gap-3.5">
             <div
-              className="w-11 h-11 rounded-2xl flex items-center justify-center font-bold text-xl shadow-lg ring-1 text-slate-950"
+              className="w-11 h-11 rounded-2xl flex items-center justify-center font-bold text-xl shadow-lg ring-1 transition-all duration-300"
               style={{
-                backgroundColor: tenant.brand_color || "#D4AF37",
-                borderColor: tenant.brand_color || "#D4AF37",
+                backgroundColor: themeColor,
+                color: contrastText,
+                borderColor: themeColor,
+                boxShadow: `0 0 20px rgba(${themeRgb.r}, ${themeRgb.g}, ${themeRgb.b}, 0.35)`,
               }}
             >
               <Store className="w-6 h-6" />
@@ -574,7 +692,9 @@ export default function RestaurantAdminPortal() {
               <div className="text-xs text-slate-400 flex items-center gap-2 mt-0.5">
                 <span>{tenant.city}</span>
                 <span>•</span>
-                <span className="text-amber-400 font-medium">Logged in as {session.name}</span>
+                <span style={{ color: themeColor }} className="font-medium">
+                  Logged in as {session.name}
+                </span>
                 {tenant.gstin && (
                   <>
                     <span>•</span>
@@ -589,7 +709,9 @@ export default function RestaurantAdminPortal() {
           <div className="flex items-center gap-3">
             <div className="hidden sm:flex items-center gap-2 bg-slate-950/80 px-3 py-1.5 rounded-xl border border-slate-800 text-xs">
               <span className="text-slate-400">Today&apos;s Revenue:</span>
-              <span className="font-bold text-amber-400">₹{totalRevenueToday.toLocaleString("en-IN")}</span>
+              <span className="font-bold font-mono" style={{ color: themeColor }}>
+                ₹{totalRevenueToday.toLocaleString("en-IN")}
+              </span>
             </div>
 
             <button
@@ -611,7 +733,7 @@ export default function RestaurantAdminPortal() {
         </div>
       </header>
 
-      {/* Navigation Sub-Tabs */}
+      {/* Navigation Sub-Tabs with Dynamic Theme Highlights */}
       <div className="bg-slate-900/60 border-b border-slate-800/80 px-6 py-2.5">
         <div className="max-w-7xl mx-auto flex items-center gap-2 overflow-x-auto no-scrollbar">
           {[
@@ -621,7 +743,7 @@ export default function RestaurantAdminPortal() {
             { id: "menu", label: "Menu & Stock Inventory", icon: UtensilsCrossed, badge: `${menuItems.length} dishes` },
             { id: "staff", label: "Admin & Staff Seats", icon: Users, badge: staffList.length + adminsList.length },
             { id: "sales", label: "Today's Register", icon: TrendingUp },
-            { id: "settings", label: "Settings & Branding", icon: Settings },
+            { id: "settings", label: "Account & Settings", icon: Settings },
           ].map((tab) => {
             const Icon = tab.icon;
             const isActive = activeTab === tab.id;
@@ -629,9 +751,18 @@ export default function RestaurantAdminPortal() {
               <button
                 key={tab.id}
                 onClick={() => setActiveTab(tab.id as any)}
+                style={
+                  isActive
+                    ? {
+                        backgroundColor: themeColor,
+                        color: contrastText,
+                        boxShadow: `0 4px 14px rgba(${themeRgb.r}, ${themeRgb.g}, ${themeRgb.b}, 0.28)`,
+                      }
+                    : {}
+                }
                 className={`px-3.5 py-2 rounded-xl text-xs font-semibold flex items-center gap-2 shrink-0 transition cursor-pointer ${
                   isActive
-                    ? "bg-amber-400 text-slate-950 shadow-md shadow-amber-400/20 font-bold"
+                    ? "font-bold shadow-md"
                     : "text-slate-400 hover:text-white hover:bg-slate-800/60"
                 }`}
               >
@@ -640,7 +771,9 @@ export default function RestaurantAdminPortal() {
                 {tab.badge !== undefined && (
                   <span
                     className={`px-1.5 py-0.2 rounded-full text-[10px] font-mono font-bold ${
-                      isActive ? "bg-slate-950 text-amber-300" : "bg-slate-800 text-slate-300 border border-slate-700"
+                      isActive
+                        ? "bg-slate-950/20 text-current"
+                        : "bg-slate-800 text-slate-300 border border-slate-700"
                     }`}
                   >
                     {tab.badge}
@@ -669,19 +802,21 @@ export default function RestaurantAdminPortal() {
 
               {/* Status Filter Pills */}
               <div className="flex items-center gap-1.5 bg-slate-900 p-1 rounded-xl border border-slate-800 text-xs">
-                {["all", "new", "preparing", "ready", "served", "paid"].map((st) => (
-                  <button
-                    key={st}
-                    onClick={() => setOrderFilter(st)}
-                    className={`px-3 py-1.5 rounded-lg capitalize font-medium transition cursor-pointer ${
-                      orderFilter === st
-                        ? "bg-amber-400 text-slate-950 font-bold"
-                        : "text-slate-400 hover:text-white"
-                    }`}
-                  >
-                    {st}
-                  </button>
-                ))}
+                {["all", "new", "preparing", "ready", "served", "paid"].map((st) => {
+                  const isSel = orderFilter === st;
+                  return (
+                    <button
+                      key={st}
+                      onClick={() => setOrderFilter(st)}
+                      style={isSel ? { backgroundColor: themeColor, color: contrastText } : {}}
+                      className={`px-3 py-1.5 rounded-lg capitalize font-medium transition cursor-pointer ${
+                        isSel ? "font-bold shadow-sm" : "text-slate-400 hover:text-white"
+                      }`}
+                    >
+                      {st}
+                    </button>
+                  );
+                })}
               </div>
             </div>
 
@@ -711,7 +846,10 @@ export default function RestaurantAdminPortal() {
                         {/* Order Header */}
                         <div className="flex items-center justify-between pb-3 border-b border-slate-800/80 mb-3">
                           <div>
-                            <span className="font-mono text-xs font-bold text-amber-400">
+                            <span
+                              className="font-mono text-xs font-bold"
+                              style={{ color: themeColor }}
+                            >
                               #{order.order_number}
                             </span>
                             <div className="text-sm font-bold text-white mt-0.5">
@@ -737,7 +875,9 @@ export default function RestaurantAdminPortal() {
                           {order.items.map((item, idx) => (
                             <div key={idx} className="flex justify-between text-xs">
                               <span className="text-slate-300">
-                                <strong className="text-amber-400 mr-1.5">{item.quantity}x</strong>
+                                <strong style={{ color: themeColor }} className="mr-1.5">
+                                  {item.quantity}x
+                                </strong>
                                 {item.name}
                               </span>
                               <span className="font-mono text-slate-400">₹{item.price * item.quantity}</span>
@@ -753,7 +893,10 @@ export default function RestaurantAdminPortal() {
                             <Clock className="w-3.5 h-3.5" />
                             {order.created_at}
                           </span>
-                          <span className="font-serif font-bold text-amber-400 text-base">
+                          <span
+                            className="font-serif font-bold text-base"
+                            style={{ color: themeColor }}
+                          >
                             ₹{order.total.toLocaleString("en-IN")}
                           </span>
                         </div>
@@ -763,7 +906,12 @@ export default function RestaurantAdminPortal() {
                           {order.status === "new" && (
                             <button
                               onClick={() => handleStatusChange(order.id, "preparing")}
-                              className="col-span-2 py-2 rounded-xl bg-amber-400 hover:bg-amber-300 text-slate-950 font-bold transition flex items-center justify-center gap-1.5 cursor-pointer"
+                              style={{
+                                backgroundColor: themeColor,
+                                color: contrastText,
+                                boxShadow: `0 4px 12px rgba(${themeRgb.r}, ${themeRgb.g}, ${themeRgb.b}, 0.2)`,
+                              }}
+                              className="col-span-2 py-2 rounded-xl font-bold transition flex items-center justify-center gap-1.5 cursor-pointer hover:opacity-90"
                             >
                               <ChefHat className="w-4 h-4" />
                               Send to Kitchen
@@ -772,7 +920,7 @@ export default function RestaurantAdminPortal() {
                           {order.status === "preparing" && (
                             <button
                               onClick={() => handleStatusChange(order.id, "ready")}
-                              className="col-span-2 py-2 rounded-xl bg-emerald-500 hover:bg-emerald-400 text-slate-950 font-bold transition flex items-center justify-center gap-1.5 cursor-pointer"
+                              className="col-span-2 py-2 rounded-xl bg-emerald-500 hover:bg-emerald-400 text-slate-950 font-bold transition flex items-center justify-center gap-1.5 cursor-pointer shadow-lg shadow-emerald-500/20"
                             >
                               <Check className="w-4 h-4" />
                               Mark Ready to Serve
@@ -789,7 +937,12 @@ export default function RestaurantAdminPortal() {
                           {order.status === "served" && (
                             <button
                               onClick={() => handleStatusChange(order.id, "paid")}
-                              className="col-span-2 py-2 rounded-xl bg-gradient-to-r from-amber-400 to-amber-500 hover:from-amber-300 hover:to-amber-400 text-slate-950 font-bold transition flex items-center justify-center gap-1.5 cursor-pointer shadow-lg shadow-amber-400/20"
+                              style={{
+                                backgroundColor: themeColor,
+                                color: contrastText,
+                                boxShadow: `0 4px 12px rgba(${themeRgb.r}, ${themeRgb.g}, ${themeRgb.b}, 0.2)`,
+                              }}
+                              className="col-span-2 py-2 rounded-xl font-bold transition flex items-center justify-center gap-1.5 cursor-pointer hover:opacity-90"
                             >
                               <Receipt className="w-4 h-4" />
                               Settle & Print Bill
@@ -825,7 +978,10 @@ export default function RestaurantAdminPortal() {
                   Real-time ticket dispatch for chefs and line cooks at {tenant.name}.
                 </p>
               </div>
-              <div className="text-xs font-mono bg-slate-900 border border-slate-800 px-3 py-1.5 rounded-xl text-amber-400">
+              <div
+                className="text-xs font-mono bg-slate-900 border border-slate-800 px-3 py-1.5 rounded-xl font-bold"
+                style={{ color: themeColor }}
+              >
                 Active Fire Tickets: {orders.filter((o) => o.status === "preparing").length}
               </div>
             </div>
@@ -859,7 +1015,13 @@ export default function RestaurantAdminPortal() {
                             className="flex items-center justify-between p-2 rounded-xl bg-slate-950/60 border border-slate-800/80"
                           >
                             <span className="text-sm font-bold text-white flex items-center gap-2">
-                              <span className="w-6 h-6 rounded-lg bg-amber-400/20 text-amber-400 flex items-center justify-center font-mono text-xs">
+                              <span
+                                className="w-6 h-6 rounded-lg flex items-center justify-center font-mono text-xs font-bold"
+                                style={{
+                                  backgroundColor: `rgba(${themeRgb.r}, ${themeRgb.g}, ${themeRgb.b}, 0.2)`,
+                                  color: themeColor,
+                                }}
+                              >
                                 {item.quantity}
                               </span>
                               {item.name}
@@ -900,7 +1062,12 @@ export default function RestaurantAdminPortal() {
               <div className="flex items-center gap-3">
                 <button
                   onClick={() => setIsAddTableOpen(true)}
-                  className="px-3.5 py-2 rounded-xl bg-amber-400 hover:bg-amber-300 text-slate-950 font-bold text-xs flex items-center gap-1.5 shadow-lg shadow-amber-400/20 transition cursor-pointer"
+                  style={{
+                    backgroundColor: themeColor,
+                    color: contrastText,
+                    boxShadow: `0 4px 14px rgba(${themeRgb.r}, ${themeRgb.g}, ${themeRgb.b}, 0.25)`,
+                  }}
+                  className="px-3.5 py-2 rounded-xl font-bold text-xs flex items-center gap-1.5 transition cursor-pointer hover:opacity-90"
                 >
                   <Plus className="w-4 h-4" />
                   <span>Add Table</span>
@@ -915,9 +1082,14 @@ export default function RestaurantAdminPortal() {
               </span>
               <button
                 onClick={() => setSelectedFloor("all")}
+                style={
+                  selectedFloor === "all"
+                    ? { backgroundColor: themeColor, color: contrastText }
+                    : {}
+                }
                 className={`px-3 py-1.5 rounded-xl text-xs font-semibold shrink-0 transition cursor-pointer ${
                   selectedFloor === "all"
-                    ? "bg-slate-800 text-amber-400 border border-amber-400/40"
+                    ? "font-bold shadow-md"
                     : "text-slate-400 hover:text-white bg-slate-900/60"
                 }`}
               >
@@ -925,13 +1097,19 @@ export default function RestaurantAdminPortal() {
               </button>
               {floors.map((flr) => {
                 const count = tables.filter((t) => t.floor === flr).length;
+                const isSelected = selectedFloor === flr;
                 return (
                   <button
                     key={flr}
                     onClick={() => setSelectedFloor(flr)}
+                    style={
+                      isSelected
+                        ? { backgroundColor: themeColor, color: contrastText }
+                        : {}
+                    }
                     className={`px-3 py-1.5 rounded-xl text-xs font-semibold shrink-0 transition cursor-pointer ${
-                      selectedFloor === flr
-                        ? "bg-amber-400 text-slate-950 font-bold shadow-md shadow-amber-400/20"
+                      isSelected
+                        ? "font-bold shadow-md"
                         : "text-slate-400 hover:text-white bg-slate-900/60"
                     }`}
                   >
@@ -1006,7 +1184,13 @@ export default function RestaurantAdminPortal() {
                       <div className="text-xs text-slate-400 space-y-0.5">
                         <div className="flex items-center justify-between">
                           <span>Capacity: <strong className="text-slate-200">{tbl.capacity} Pax</strong></span>
-                          <span className="text-[10px] font-mono bg-slate-800/80 px-1.5 py-0.5 rounded text-amber-300">
+                          <span
+                            className="text-[10px] font-mono px-1.5 py-0.5 rounded"
+                            style={{
+                              backgroundColor: `rgba(${themeRgb.r}, ${themeRgb.g}, ${themeRgb.b}, 0.15)`,
+                              color: themeColor,
+                            }}
+                          >
                             {tbl.floor}
                           </span>
                         </div>
@@ -1036,7 +1220,7 @@ export default function RestaurantAdminPortal() {
                           onClick={() => handleTableStatus(tbl.id, "available")}
                           className={`py-1 rounded-lg border font-semibold transition cursor-pointer ${
                             tbl.status === "available"
-                              ? "bg-emerald-500 text-slate-950 border-emerald-400"
+                              ? "bg-emerald-500 text-slate-950 border-emerald-400 font-bold"
                               : "bg-emerald-950/30 text-emerald-300 border-emerald-500/20 hover:bg-emerald-900/40"
                           }`}
                         >
@@ -1046,7 +1230,7 @@ export default function RestaurantAdminPortal() {
                           onClick={() => handleTableStatus(tbl.id, "occupied")}
                           className={`py-1 rounded-lg border font-semibold transition cursor-pointer ${
                             tbl.status === "occupied"
-                              ? "bg-rose-500 text-white border-rose-400"
+                              ? "bg-rose-500 text-white border-rose-400 font-bold"
                               : "bg-rose-950/30 text-rose-300 border-rose-500/20 hover:bg-rose-900/40"
                           }`}
                         >
@@ -1056,7 +1240,7 @@ export default function RestaurantAdminPortal() {
                           onClick={() => handleTableStatus(tbl.id, "reserved")}
                           className={`py-1 rounded-lg border font-semibold transition cursor-pointer ${
                             tbl.status === "reserved"
-                              ? "bg-amber-400 text-slate-950 border-amber-300"
+                              ? "bg-amber-400 text-slate-950 border-amber-300 font-bold"
                               : "bg-amber-950/30 text-amber-300 border-amber-500/20 hover:bg-amber-900/40"
                           }`}
                         >
@@ -1066,7 +1250,7 @@ export default function RestaurantAdminPortal() {
                           onClick={() => handleTableStatus(tbl.id, "cleaning")}
                           className={`py-1 rounded-lg border font-semibold transition cursor-pointer ${
                             tbl.status === "cleaning"
-                              ? "bg-cyan-400 text-slate-950 border-cyan-300"
+                              ? "bg-cyan-400 text-slate-950 border-cyan-300 font-bold"
                               : "bg-cyan-950/30 text-cyan-300 border-cyan-500/20 hover:bg-cyan-900/40"
                           }`}
                         >
@@ -1085,7 +1269,7 @@ export default function RestaurantAdminPortal() {
                 <div className="bg-slate-900 border border-slate-800 rounded-2xl p-6 max-w-md w-full shadow-2xl">
                   <div className="flex items-center justify-between pb-3 border-b border-slate-800 mb-4">
                     <h3 className="text-base font-bold text-white flex items-center gap-2">
-                      <LayoutGrid className="w-5 h-5 text-amber-400" />
+                      <LayoutGrid className="w-5 h-5" style={{ color: themeColor }} />
                       Add Dining Table
                     </h3>
                     <button
@@ -1159,7 +1343,12 @@ export default function RestaurantAdminPortal() {
                       </button>
                       <button
                         type="submit"
-                        className="flex-1 py-2.5 rounded-xl bg-amber-400 hover:bg-amber-300 text-slate-950 text-xs font-bold shadow-lg shadow-amber-400/20 cursor-pointer"
+                        style={{
+                          backgroundColor: themeColor,
+                          color: contrastText,
+                          boxShadow: `0 4px 14px rgba(${themeRgb.r}, ${themeRgb.g}, ${themeRgb.b}, 0.25)`,
+                        }}
+                        className="flex-1 py-2.5 rounded-xl text-xs font-bold transition cursor-pointer hover:opacity-90"
                       >
                         Save & Deploy Table
                       </button>
@@ -1188,9 +1377,14 @@ export default function RestaurantAdminPortal() {
               <div className="flex items-center gap-1.5 bg-slate-900 p-1 rounded-xl border border-slate-800 text-xs">
                 <button
                   onClick={() => setMenuSubTab("dishes")}
+                  style={
+                    menuSubTab === "dishes"
+                      ? { backgroundColor: themeColor, color: contrastText }
+                      : {}
+                  }
                   className={`px-3 py-1.5 rounded-lg font-bold flex items-center gap-1.5 transition cursor-pointer ${
                     menuSubTab === "dishes"
-                      ? "bg-amber-400 text-slate-950 shadow-md shadow-amber-400/20"
+                      ? "shadow-md"
                       : "text-slate-400 hover:text-white"
                   }`}
                 >
@@ -1199,9 +1393,14 @@ export default function RestaurantAdminPortal() {
                 </button>
                 <button
                   onClick={() => setMenuSubTab("inventory")}
+                  style={
+                    menuSubTab === "inventory"
+                      ? { backgroundColor: themeColor, color: contrastText }
+                      : {}
+                  }
                   className={`px-3 py-1.5 rounded-lg font-bold flex items-center gap-1.5 transition cursor-pointer ${
                     menuSubTab === "inventory"
-                      ? "bg-amber-400 text-slate-950 shadow-md shadow-amber-400/20"
+                      ? "shadow-md"
                       : "text-slate-400 hover:text-white"
                   }`}
                 >
@@ -1245,7 +1444,12 @@ export default function RestaurantAdminPortal() {
 
                   <button
                     onClick={() => setIsAddDishOpen(true)}
-                    className="px-3 py-1.5 rounded-xl bg-amber-400 hover:bg-amber-300 text-slate-950 font-bold text-xs flex items-center gap-1.5 transition cursor-pointer shadow-md shadow-amber-400/20"
+                    style={{
+                      backgroundColor: themeColor,
+                      color: contrastText,
+                      boxShadow: `0 4px 14px rgba(${themeRgb.r}, ${themeRgb.g}, ${themeRgb.b}, 0.2)`,
+                    }}
+                    className="px-3 py-1.5 rounded-xl font-bold text-xs flex items-center gap-1.5 transition cursor-pointer hover:opacity-90"
                   >
                     <Plus className="w-4 h-4" />
                     <span>Add New Dish</span>
@@ -1288,7 +1492,10 @@ export default function RestaurantAdminPortal() {
                           <td className="py-3.5 px-4 text-slate-400 font-mono text-[11px]">
                             {item.prep_time_minutes || 15} mins
                           </td>
-                          <td className="py-3.5 px-4 font-mono font-bold text-amber-400 text-sm">
+                          <td
+                            className="py-3.5 px-4 font-mono font-bold text-sm"
+                            style={{ color: themeColor }}
+                          >
                             ₹{item.price}
                           </td>
                           <td className="py-3.5 px-4">
@@ -1371,7 +1578,12 @@ export default function RestaurantAdminPortal() {
 
                   <button
                     onClick={() => setIsAddInventoryOpen(true)}
-                    className="px-3 py-1.5 rounded-xl bg-amber-400 hover:bg-amber-300 text-slate-950 font-bold text-xs flex items-center gap-1.5 transition cursor-pointer shadow-md shadow-amber-400/20"
+                    style={{
+                      backgroundColor: themeColor,
+                      color: contrastText,
+                      boxShadow: `0 4px 14px rgba(${themeRgb.r}, ${themeRgb.g}, ${themeRgb.b}, 0.2)`,
+                    }}
+                    className="px-3 py-1.5 rounded-xl font-bold text-xs flex items-center gap-1.5 transition cursor-pointer hover:opacity-90"
                   >
                     <Plus className="w-4 h-4" />
                     <span>Add Raw Material</span>
@@ -1416,7 +1628,10 @@ export default function RestaurantAdminPortal() {
                                 {item.category}
                               </span>
                             </td>
-                            <td className="py-3.5 px-4 font-mono font-bold text-amber-400 text-sm">
+                            <td
+                              className="py-3.5 px-4 font-mono font-bold text-sm"
+                              style={{ color: themeColor }}
+                            >
                               {item.quantity} {item.unit}
                             </td>
                             <td className="py-3.5 px-4 font-mono text-slate-400">
@@ -1504,7 +1719,8 @@ export default function RestaurantAdminPortal() {
                     </button>
                     <button
                       onClick={handleSavePrice}
-                      className="flex-1 py-2 rounded-xl bg-amber-400 hover:bg-amber-300 text-slate-950 text-xs font-bold cursor-pointer"
+                      style={{ backgroundColor: themeColor, color: contrastText }}
+                      className="flex-1 py-2 rounded-xl font-bold text-xs cursor-pointer hover:opacity-90"
                     >
                       Save Changes
                     </button>
@@ -1519,7 +1735,7 @@ export default function RestaurantAdminPortal() {
                 <div className="bg-slate-900 border border-slate-800 rounded-2xl p-6 max-w-md w-full shadow-2xl">
                   <div className="flex items-center justify-between pb-3 border-b border-slate-800 mb-4">
                     <h3 className="text-base font-bold text-white flex items-center gap-2">
-                      <UtensilsCrossed className="w-5 h-5 text-amber-400" />
+                      <UtensilsCrossed className="w-5 h-5" style={{ color: themeColor }} />
                       Add New Restaurant Dish
                     </h3>
                     <button
@@ -1619,7 +1835,12 @@ export default function RestaurantAdminPortal() {
                       </button>
                       <button
                         type="submit"
-                        className="flex-1 py-2.5 rounded-xl bg-amber-400 hover:bg-amber-300 text-slate-950 text-xs font-bold shadow-lg shadow-amber-400/20 cursor-pointer"
+                        style={{
+                          backgroundColor: themeColor,
+                          color: contrastText,
+                          boxShadow: `0 4px 14px rgba(${themeRgb.r}, ${themeRgb.g}, ${themeRgb.b}, 0.25)`,
+                        }}
+                        className="flex-1 py-2.5 rounded-xl text-xs font-bold transition cursor-pointer hover:opacity-90"
                       >
                         Add to Menu
                       </button>
@@ -1635,7 +1856,7 @@ export default function RestaurantAdminPortal() {
                 <div className="bg-slate-900 border border-slate-800 rounded-2xl p-6 max-w-md w-full shadow-2xl">
                   <div className="flex items-center justify-between pb-3 border-b border-slate-800 mb-4">
                     <h3 className="text-base font-bold text-white flex items-center gap-2">
-                      <Boxes className="w-5 h-5 text-amber-400" />
+                      <Boxes className="w-5 h-5" style={{ color: themeColor }} />
                       Add Raw Material to Inventory
                     </h3>
                     <button
@@ -1738,7 +1959,12 @@ export default function RestaurantAdminPortal() {
                       </button>
                       <button
                         type="submit"
-                        className="flex-1 py-2.5 rounded-xl bg-amber-400 hover:bg-amber-300 text-slate-950 text-xs font-bold shadow-lg shadow-amber-400/20 cursor-pointer"
+                        style={{
+                          backgroundColor: themeColor,
+                          color: contrastText,
+                          boxShadow: `0 4px 14px rgba(${themeRgb.r}, ${themeRgb.g}, ${themeRgb.b}, 0.25)`,
+                        }}
+                        className="flex-1 py-2.5 rounded-xl text-xs font-bold transition cursor-pointer hover:opacity-90"
                       >
                         Add to Inventory
                       </button>
@@ -1765,7 +1991,12 @@ export default function RestaurantAdminPortal() {
 
               <button
                 onClick={() => setIsAddStaffOpen(true)}
-                className="px-3.5 py-2 rounded-xl bg-amber-400 hover:bg-amber-300 text-slate-950 font-bold text-xs flex items-center gap-1.5 shadow-lg shadow-amber-400/20 transition cursor-pointer"
+                style={{
+                  backgroundColor: themeColor,
+                  color: contrastText,
+                  boxShadow: `0 4px 14px rgba(${themeRgb.r}, ${themeRgb.g}, ${themeRgb.b}, 0.25)`,
+                }}
+                className="px-3.5 py-2 rounded-xl font-bold text-xs flex items-center gap-1.5 transition cursor-pointer hover:opacity-90"
               >
                 <UserPlus className="w-4 h-4" />
                 <span>Add Staff Member</span>
@@ -1775,7 +2006,7 @@ export default function RestaurantAdminPortal() {
             {/* Section A: Platform Back-Office Admins */}
             <div>
               <h3 className="text-sm font-bold text-white uppercase tracking-wider font-mono mb-3 flex items-center gap-2">
-                <Shield className="w-4 h-4 text-amber-400" /> Authorized Back-Office Admins
+                <Shield className="w-4 h-4" style={{ color: themeColor }} /> Authorized Back-Office Admins
               </h3>
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 {adminsList.map((adm) => (
@@ -1784,13 +2015,23 @@ export default function RestaurantAdminPortal() {
                     className="bg-slate-900 border border-slate-800 rounded-2xl p-5 shadow-xl flex items-center justify-between"
                   >
                     <div className="flex items-center gap-3">
-                      <div className="w-10 h-10 rounded-xl bg-amber-500/10 border border-amber-500/30 text-amber-400 flex items-center justify-center font-bold font-serif">
+                      <div
+                        className="w-10 h-10 rounded-xl border flex items-center justify-center font-bold font-serif"
+                        style={{
+                          backgroundColor: `rgba(${themeRgb.r}, ${themeRgb.g}, ${themeRgb.b}, 0.15)`,
+                          borderColor: `rgba(${themeRgb.r}, ${themeRgb.g}, ${themeRgb.b}, 0.35)`,
+                          color: themeColor,
+                        }}
+                      >
                         {adm.name.charAt(0)}
                       </div>
                       <div>
                         <div className="font-semibold text-white text-sm">{adm.name}</div>
                         <div className="text-xs text-slate-400">{adm.email}</div>
-                        <div className="text-[10px] text-amber-400/80 mt-1 uppercase font-mono">
+                        <div
+                          className="text-[10px] mt-1 uppercase font-mono font-medium"
+                          style={{ color: themeColor }}
+                        >
                           Role: {adm.role} • Status: {adm.status}
                         </div>
                       </div>
@@ -1850,7 +2091,9 @@ export default function RestaurantAdminPortal() {
                         </div>
 
                         <div className="text-xs text-slate-400 space-y-1">
-                          <div className="text-amber-400 font-semibold">{staff.role}</div>
+                          <div className="font-semibold" style={{ color: themeColor }}>
+                            {staff.role}
+                          </div>
                           <div>Phone: <span className="font-mono text-slate-300">{staff.phone}</span></div>
                           <div className="flex items-center justify-between text-[11px]">
                             <span>Shift: <strong className="text-slate-300">{staff.shift}</strong></span>
@@ -1885,7 +2128,7 @@ export default function RestaurantAdminPortal() {
                 <div className="bg-slate-900 border border-slate-800 rounded-2xl p-6 max-w-md w-full shadow-2xl">
                   <div className="flex items-center justify-between pb-3 border-b border-slate-800 mb-4">
                     <h3 className="text-base font-bold text-white flex items-center gap-2">
-                      <UserPlus className="w-5 h-5 text-amber-400" />
+                      <UserPlus className="w-5 h-5" style={{ color: themeColor }} />
                       Add Outlet Crew Member
                     </h3>
                     <button
@@ -1976,7 +2219,12 @@ export default function RestaurantAdminPortal() {
                       </button>
                       <button
                         type="submit"
-                        className="flex-1 py-2.5 rounded-xl bg-amber-400 hover:bg-amber-300 text-slate-950 text-xs font-bold shadow-lg shadow-amber-400/20 cursor-pointer"
+                        style={{
+                          backgroundColor: themeColor,
+                          color: contrastText,
+                          boxShadow: `0 4px 14px rgba(${themeRgb.r}, ${themeRgb.g}, ${themeRgb.b}, 0.25)`,
+                        }}
+                        className="flex-1 py-2.5 rounded-xl text-xs font-bold transition cursor-pointer hover:opacity-90"
                       >
                         Enroll Staff Member
                       </button>
@@ -2003,7 +2251,10 @@ export default function RestaurantAdminPortal() {
             <div className="grid grid-cols-1 sm:grid-cols-3 gap-5">
               <div className="p-5 rounded-2xl bg-slate-900 border border-slate-800">
                 <div className="text-xs text-slate-400 mb-1">Gross Sales Today</div>
-                <div className="text-2xl font-bold font-serif text-amber-400">
+                <div
+                  className="text-2xl font-bold font-serif"
+                  style={{ color: themeColor }}
+                >
                   ₹{totalRevenueToday.toLocaleString("en-IN")}
                 </div>
                 <div className="text-[11px] text-emerald-400 mt-1">↑ 18% vs yesterday</div>
@@ -2029,30 +2280,75 @@ export default function RestaurantAdminPortal() {
         )}
 
         {/* ========================================================== */}
-        {/* TAB 7: SETTINGS, PASSWORD & BRANDING (NEW CUSTOMIZATION)   */}
+        {/* TAB 7: ACCOUNT, PASSWORD & RGB THEME CUSTOMIZER            */}
         {/* ========================================================== */}
         {activeTab === "settings" && (
           <div className="space-y-8">
-            <div>
-              <h2 className="text-xl font-bold font-serif text-white flex items-center gap-2">
-                <Settings className="w-5 h-5 text-amber-400" />
-                Settings, Password & Profile Branding
-              </h2>
-              <p className="text-xs text-slate-400">
-                Configure your admin security credentials, restaurant profile, GSTIN, and brand theme.
-              </p>
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+              <div>
+                <h2 className="text-xl font-bold font-serif text-white flex items-center gap-2">
+                  <SlidersHorizontal className="w-5 h-5" style={{ color: themeColor }} />
+                  Account & Interface Settings
+                </h2>
+                <p className="text-xs text-slate-400">
+                  Update your admin security password, personalize your RGB theme accent, and manage restaurant details.
+                </p>
+              </div>
+
+              {/* Current Active Theme Pill */}
+              <div className="flex items-center gap-2 bg-slate-900 px-3.5 py-1.5 rounded-2xl border border-slate-800 text-xs">
+                <span className="text-slate-400">Current Theme:</span>
+                <span
+                  className="w-3.5 h-3.5 rounded-full ring-1 ring-white/50"
+                  style={{ backgroundColor: themeColor }}
+                />
+                <span className="font-mono font-bold text-white">{themeColor.toUpperCase()}</span>
+                <span className="text-[11px] text-slate-500 font-mono">
+                  rgb({themeRgb.r}, {themeRgb.g}, {themeRgb.b})
+                </span>
+              </div>
             </div>
 
             <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-              {/* Card 1: Change Password */}
+              {/* ============================================ */}
+              {/* CARD 1: ADMIN SECURITY & PASSWORD CHANGE    */}
+              {/* ============================================ */}
               <div className="bg-slate-900 border border-slate-800 rounded-2xl p-6 shadow-xl space-y-5">
-                <div className="flex items-center gap-3 pb-3 border-b border-slate-800">
-                  <div className="w-10 h-10 rounded-xl bg-amber-500/10 border border-amber-500/30 text-amber-400 flex items-center justify-center">
-                    <Shield className="w-5 h-5" />
+                <div className="flex items-center justify-between pb-3 border-b border-slate-800">
+                  <div className="flex items-center gap-3">
+                    <div
+                      className="w-10 h-10 rounded-xl border flex items-center justify-center transition-colors"
+                      style={{
+                        backgroundColor: `rgba(${themeRgb.r}, ${themeRgb.g}, ${themeRgb.b}, 0.15)`,
+                        borderColor: `rgba(${themeRgb.r}, ${themeRgb.g}, ${themeRgb.b}, 0.35)`,
+                        color: themeColor,
+                      }}
+                    >
+                      <Lock className="w-5 h-5" />
+                    </div>
+                    <div>
+                      <h3 className="text-base font-bold text-white">Admin Account & Security</h3>
+                      <p className="text-xs text-slate-400">Change your login password</p>
+                    </div>
                   </div>
-                  <div>
-                    <h3 className="text-base font-bold text-white">Change Admin Password</h3>
-                    <p className="text-xs text-slate-400">Update the login password for {session.email}</p>
+                  <span className="px-2 py-0.5 rounded-full text-[10px] font-mono font-bold uppercase bg-slate-800 text-slate-300 border border-slate-700">
+                    {session.role}
+                  </span>
+                </div>
+
+                {/* Logged in admin account identity badge */}
+                <div className="p-3.5 rounded-xl bg-slate-950/70 border border-slate-800 text-xs space-y-1">
+                  <div className="flex items-center justify-between">
+                    <span className="text-slate-400">Logged-in Administrator:</span>
+                    <span className="font-bold text-white">{session.name}</span>
+                  </div>
+                  <div className="flex items-center justify-between">
+                    <span className="text-slate-400">Account Email:</span>
+                    <span className="font-mono text-amber-300">{session.email}</span>
+                  </div>
+                  <div className="flex items-center justify-between">
+                    <span className="text-slate-400">Managed Outlet:</span>
+                    <span className="text-slate-200">{tenant.name}</span>
                   </div>
                 </div>
 
@@ -2078,7 +2374,7 @@ export default function RestaurantAdminPortal() {
                       <input
                         type={showCurrentPassword ? "text" : "password"}
                         required
-                        placeholder="Enter your current password"
+                        placeholder="Enter current password (or voucher password)"
                         value={currentPassword}
                         onChange={(e) => setCurrentPassword(e.target.value)}
                         className="w-full bg-slate-950 border border-slate-700 rounded-xl pl-3 pr-10 py-2.5 text-xs text-white placeholder-slate-500 focus:outline-none focus:border-amber-400"
@@ -2095,7 +2391,14 @@ export default function RestaurantAdminPortal() {
 
                   {/* New Password */}
                   <div>
-                    <label className="block text-xs font-medium text-slate-300 mb-1">New Password</label>
+                    <div className="flex items-center justify-between mb-1">
+                      <label className="text-xs font-medium text-slate-300">New Password</label>
+                      {newPassword && (
+                        <span className="text-[10px] text-slate-400">
+                          Strength: <strong className="text-white">{passwordStrength.label}</strong>
+                        </span>
+                      )}
+                    </div>
                     <div className="relative">
                       <input
                         type={showNewPassword ? "text" : "password"}
@@ -2113,6 +2416,15 @@ export default function RestaurantAdminPortal() {
                         {showNewPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
                       </button>
                     </div>
+
+                    {/* Password Strength Indicator */}
+                    {newPassword && (
+                      <div className="mt-1.5 flex gap-1 h-1">
+                        <div className={`flex-1 rounded-full ${passwordStrength.score >= 1 ? passwordStrength.color : "bg-slate-800"}`} />
+                        <div className={`flex-1 rounded-full ${passwordStrength.score >= 2 ? passwordStrength.color : "bg-slate-800"}`} />
+                        <div className={`flex-1 rounded-full ${passwordStrength.score >= 3 ? passwordStrength.color : "bg-slate-800"}`} />
+                      </div>
+                    )}
                   </div>
 
                   {/* Confirm Password */}
@@ -2130,34 +2442,282 @@ export default function RestaurantAdminPortal() {
 
                   <button
                     type="submit"
-                    className="w-full py-2.5 rounded-xl bg-amber-400 hover:bg-amber-300 text-slate-950 text-xs font-bold transition flex items-center justify-center gap-2 shadow-lg shadow-amber-400/20 cursor-pointer"
+                    style={{
+                      backgroundColor: themeColor,
+                      color: contrastText,
+                      boxShadow: `0 4px 14px rgba(${themeRgb.r}, ${themeRgb.g}, ${themeRgb.b}, 0.25)`,
+                    }}
+                    className="w-full py-2.5 rounded-xl font-bold text-xs transition flex items-center justify-center gap-2 cursor-pointer hover:opacity-90"
                   >
-                    <Check className="w-4 h-4" />
-                    Save & Update Password
+                    <KeyRound className="w-4 h-4" />
+                    Save & Update Admin Password
                   </button>
                 </form>
               </div>
 
-              {/* Card 2: Restaurant Profile & Brand Identity */}
+              {/* ============================================ */}
+              {/* CARD 2: RGB THEME ENGINE & CUSTOMIZER       */}
+              {/* ============================================ */}
               <div className="bg-slate-900 border border-slate-800 rounded-2xl p-6 shadow-xl space-y-5">
-                <div className="flex items-center gap-3 pb-3 border-b border-slate-800">
-                  <div className="w-10 h-10 rounded-xl bg-emerald-500/10 border border-emerald-500/30 text-emerald-400 flex items-center justify-center">
-                    <Palette className="w-5 h-5" />
+                <div className="flex items-center justify-between pb-3 border-b border-slate-800">
+                  <div className="flex items-center gap-3">
+                    <div
+                      className="w-10 h-10 rounded-xl border flex items-center justify-center transition-colors"
+                      style={{
+                        backgroundColor: `rgba(${themeRgb.r}, ${themeRgb.g}, ${themeRgb.b}, 0.15)`,
+                        borderColor: `rgba(${themeRgb.r}, ${themeRgb.g}, ${themeRgb.b}, 0.35)`,
+                        color: themeColor,
+                      }}
+                    >
+                      <Palette className="w-5 h-5" />
+                    </div>
+                    <div>
+                      <h3 className="text-base font-bold text-white">RGB Interface Theme Studio</h3>
+                      <p className="text-xs text-slate-400">Select any color code via RGB sliders or hex</p>
+                    </div>
                   </div>
-                  <div>
-                    <h3 className="text-base font-bold text-white">Restaurant Profile & Branding</h3>
-                    <p className="text-xs text-slate-400">Customise display name, tagline, GSTIN & theme color</p>
-                  </div>
+                  <span
+                    className="w-4 h-4 rounded-full ring-2 ring-white/60 shadow"
+                    style={{ backgroundColor: themeColor }}
+                  />
                 </div>
 
-                {profileSuccess && (
+                {themeSuccess && (
                   <div className="p-3 rounded-xl bg-emerald-500/10 border border-emerald-500/30 text-emerald-300 text-xs flex items-center gap-2">
                     <CheckCircle2 className="w-4 h-4 shrink-0 text-emerald-400" />
-                    <span>{profileSuccess}</span>
+                    <span>{themeSuccess}</span>
                   </div>
                 )}
 
-                <form onSubmit={handleSaveProfile} className="space-y-4">
+                {/* Live Color Input & Swatch Header */}
+                <div className="flex items-center gap-3 p-3 rounded-xl bg-slate-950 border border-slate-800">
+                  {/* Native HTML5 Color Picker */}
+                  <div className="relative">
+                    <input
+                      type="color"
+                      value={themeColor}
+                      onChange={(e) => handleHexInput(e.target.value)}
+                      className="w-12 h-12 rounded-xl cursor-pointer border-0 bg-transparent p-0"
+                      title="Click to open color palette"
+                    />
+                  </div>
+
+                  <div className="flex-1 space-y-1">
+                    <div className="flex items-center justify-between">
+                      <span className="text-[11px] text-slate-400 uppercase font-mono">Hex Code:</span>
+                      <input
+                        type="text"
+                        value={themeColor}
+                        onChange={(e) => handleHexInput(e.target.value)}
+                        placeholder="#D4AF37"
+                        className="w-24 bg-slate-900 border border-slate-700 rounded-lg px-2 py-0.5 text-xs text-center font-mono font-bold text-white focus:outline-none focus:border-amber-400 uppercase"
+                      />
+                    </div>
+                    <div className="flex items-center justify-between text-[11px]">
+                      <span className="text-slate-400 uppercase font-mono">RGB Value:</span>
+                      <span className="font-mono font-semibold text-slate-200">
+                        rgb({themeRgb.r}, {themeRgb.g}, {themeRgb.b})
+                      </span>
+                    </div>
+                  </div>
+                </div>
+
+                {/* 3 Interactive RGB Sliders */}
+                <div className="space-y-3 pt-1">
+                  {/* RED SLIDER */}
+                  <div>
+                    <div className="flex items-center justify-between text-xs mb-1">
+                      <span className="font-bold text-red-400 flex items-center gap-1.5">
+                        <span className="w-2 h-2 rounded-full bg-red-500" /> Red Channel (R)
+                      </span>
+                      <input
+                        type="number"
+                        min={0}
+                        max={255}
+                        value={themeRgb.r}
+                        onChange={(e) => handleRgbSlider("r", Number(e.target.value))}
+                        className="w-14 bg-slate-950 border border-slate-700 rounded px-1.5 py-0.5 text-xs font-mono text-center text-white"
+                      />
+                    </div>
+                    <input
+                      type="range"
+                      min={0}
+                      max={255}
+                      value={themeRgb.r}
+                      onChange={(e) => handleRgbSlider("r", Number(e.target.value))}
+                      className="w-full accent-red-500 cursor-pointer h-2 bg-slate-800 rounded-lg appearance-none"
+                    />
+                  </div>
+
+                  {/* GREEN SLIDER */}
+                  <div>
+                    <div className="flex items-center justify-between text-xs mb-1">
+                      <span className="font-bold text-emerald-400 flex items-center gap-1.5">
+                        <span className="w-2 h-2 rounded-full bg-emerald-500" /> Green Channel (G)
+                      </span>
+                      <input
+                        type="number"
+                        min={0}
+                        max={255}
+                        value={themeRgb.g}
+                        onChange={(e) => handleRgbSlider("g", Number(e.target.value))}
+                        className="w-14 bg-slate-950 border border-slate-700 rounded px-1.5 py-0.5 text-xs font-mono text-center text-white"
+                      />
+                    </div>
+                    <input
+                      type="range"
+                      min={0}
+                      max={255}
+                      value={themeRgb.g}
+                      onChange={(e) => handleRgbSlider("g", Number(e.target.value))}
+                      className="w-full accent-emerald-500 cursor-pointer h-2 bg-slate-800 rounded-lg appearance-none"
+                    />
+                  </div>
+
+                  {/* BLUE SLIDER */}
+                  <div>
+                    <div className="flex items-center justify-between text-xs mb-1">
+                      <span className="font-bold text-blue-400 flex items-center gap-1.5">
+                        <span className="w-2 h-2 rounded-full bg-blue-500" /> Blue Channel (B)
+                      </span>
+                      <input
+                        type="number"
+                        min={0}
+                        max={255}
+                        value={themeRgb.b}
+                        onChange={(e) => handleRgbSlider("b", Number(e.target.value))}
+                        className="w-14 bg-slate-950 border border-slate-700 rounded px-1.5 py-0.5 text-xs font-mono text-center text-white"
+                      />
+                    </div>
+                    <input
+                      type="range"
+                      min={0}
+                      max={255}
+                      value={themeRgb.b}
+                      onChange={(e) => handleRgbSlider("b", Number(e.target.value))}
+                      className="w-full accent-blue-500 cursor-pointer h-2 bg-slate-800 rounded-lg appearance-none"
+                    />
+                  </div>
+                </div>
+
+                {/* Curated Luxury Preset Palettes */}
+                <div>
+                  <label className="block text-[11px] font-semibold text-slate-400 uppercase font-mono mb-2">
+                    One-Click Luxury Palettes:
+                  </label>
+                  <div className="grid grid-cols-5 gap-2">
+                    {LUXURY_THEMES.map((th) => {
+                      const isCurrent = themeColor.toLowerCase() === th.hex.toLowerCase();
+                      return (
+                        <button
+                          key={th.hex}
+                          type="button"
+                          onClick={() => handleSelectPresetTheme(th)}
+                          title={`${th.name} (${th.hex})`}
+                          className={`p-2 rounded-xl text-center border transition-all cursor-pointer flex flex-col items-center justify-center gap-1 ${
+                            isCurrent
+                              ? "border-white bg-slate-800 shadow-lg scale-105"
+                              : "border-slate-800 bg-slate-950 hover:border-slate-700 hover:bg-slate-900"
+                          }`}
+                        >
+                          <span
+                            className="w-4 h-4 rounded-full shadow"
+                            style={{ backgroundColor: th.hex }}
+                          />
+                          <span className="text-[9px] font-medium text-slate-300 truncate w-full">
+                            {th.name.split(" ")[0]}
+                          </span>
+                        </button>
+                      );
+                    })}
+                  </div>
+                </div>
+
+                {/* Live Preview Box */}
+                <div
+                  className="p-3.5 rounded-xl border space-y-2 transition-all duration-300"
+                  style={{
+                    backgroundColor: `rgba(${themeRgb.r}, ${themeRgb.g}, ${themeRgb.b}, 0.08)`,
+                    borderColor: `rgba(${themeRgb.r}, ${themeRgb.g}, ${themeRgb.b}, 0.35)`,
+                  }}
+                >
+                  <div className="text-[10px] uppercase font-mono font-bold text-slate-400 flex items-center justify-between">
+                    <span>Live Interface Theme Preview:</span>
+                    <span style={{ color: themeColor }}>Active Accent</span>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <button
+                      type="button"
+                      style={{ backgroundColor: themeColor, color: contrastText }}
+                      className="px-3 py-1.5 rounded-lg text-xs font-bold shadow-md cursor-default"
+                    >
+                      Primary Button
+                    </button>
+                    <span
+                      className="px-2.5 py-1 rounded-full text-[10px] font-bold border"
+                      style={{
+                        backgroundColor: `rgba(${themeRgb.r}, ${themeRgb.g}, ${themeRgb.b}, 0.15)`,
+                        borderColor: `rgba(${themeRgb.r}, ${themeRgb.g}, ${themeRgb.b}, 0.4)`,
+                        color: themeColor,
+                      }}
+                    >
+                      Active Pill Badge
+                    </span>
+                    <span className="font-mono font-bold text-xs" style={{ color: themeColor }}>
+                      ₹1,250
+                    </span>
+                  </div>
+                </div>
+
+                {/* Save Theme Button */}
+                <button
+                  type="button"
+                  onClick={handleSaveTheme}
+                  style={{
+                    backgroundColor: themeColor,
+                    color: contrastText,
+                    boxShadow: `0 4px 16px rgba(${themeRgb.r}, ${themeRgb.g}, ${themeRgb.b}, 0.28)`,
+                  }}
+                  className="w-full py-2.5 rounded-xl font-bold text-xs transition flex items-center justify-center gap-2 cursor-pointer hover:opacity-90"
+                >
+                  <Check className="w-4 h-4" />
+                  Apply & Save Custom RGB Theme
+                </button>
+              </div>
+            </div>
+
+            {/* ============================================ */}
+            {/* CARD 3: RESTAURANT PROFILE & BUSINESS DATA   */}
+            {/* ============================================ */}
+            <div className="bg-slate-900 border border-slate-800 rounded-2xl p-6 shadow-xl space-y-5">
+              <div className="flex items-center justify-between pb-3 border-b border-slate-800">
+                <div className="flex items-center gap-3">
+                  <div
+                    className="w-10 h-10 rounded-xl border flex items-center justify-center transition-colors"
+                    style={{
+                      backgroundColor: `rgba(${themeRgb.r}, ${themeRgb.g}, ${themeRgb.b}, 0.15)`,
+                      borderColor: `rgba(${themeRgb.r}, ${themeRgb.g}, ${themeRgb.b}, 0.35)`,
+                      color: themeColor,
+                    }}
+                  >
+                    <Store className="w-5 h-5" />
+                  </div>
+                  <div>
+                    <h3 className="text-base font-bold text-white">Restaurant Profile & Commercial Identity</h3>
+                    <p className="text-xs text-slate-400">Configure outlet display name, tagline, address & GSTIN</p>
+                  </div>
+                </div>
+              </div>
+
+              {profileSuccess && (
+                <div className="p-3 rounded-xl bg-emerald-500/10 border border-emerald-500/30 text-emerald-300 text-xs flex items-center gap-2">
+                  <CheckCircle2 className="w-4 h-4 shrink-0 text-emerald-400" />
+                  <span>{profileSuccess}</span>
+                </div>
+              )}
+
+              <form onSubmit={handleSaveProfile} className="space-y-4">
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                   <div>
                     <label className="block text-xs font-medium text-slate-300 mb-1">Restaurant Display Name</label>
                     <input
@@ -2170,7 +2730,7 @@ export default function RestaurantAdminPortal() {
                   </div>
 
                   <div>
-                    <label className="block text-xs font-medium text-slate-300 mb-1">Tagline / Slogan</label>
+                    <label className="block text-xs font-medium text-slate-300 mb-1">Tagline / Brand Slogan</label>
                     <input
                       type="text"
                       placeholder="e.g. Authentic Rayalaseema & Coastal Cuisine"
@@ -2179,113 +2739,85 @@ export default function RestaurantAdminPortal() {
                       className="w-full bg-slate-950 border border-slate-700 rounded-xl px-3 py-2 text-xs text-white"
                     />
                   </div>
+                </div>
 
-                  <div className="grid grid-cols-2 gap-3">
-                    <div>
-                      <label className="block text-xs font-medium text-slate-300 mb-1">Phone</label>
-                      <input
-                        type="text"
-                        value={profilePhone}
-                        onChange={(e) => setProfilePhone(e.target.value)}
-                        className="w-full bg-slate-950 border border-slate-700 rounded-xl px-3 py-2 text-xs text-white font-mono"
-                      />
-                    </div>
-                    <div>
-                      <label className="block text-xs font-medium text-slate-300 mb-1">City</label>
-                      <input
-                        type="text"
-                        value={profileCity}
-                        onChange={(e) => setProfileCity(e.target.value)}
-                        className="w-full bg-slate-950 border border-slate-700 rounded-xl px-3 py-2 text-xs text-white"
-                      />
-                    </div>
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                  <div>
+                    <label className="block text-xs font-medium text-slate-300 mb-1">Contact Phone</label>
+                    <input
+                      type="text"
+                      value={profilePhone}
+                      onChange={(e) => setProfilePhone(e.target.value)}
+                      className="w-full bg-slate-950 border border-slate-700 rounded-xl px-3 py-2 text-xs text-white font-mono"
+                    />
                   </div>
 
                   <div>
-                    <label className="block text-xs font-medium text-slate-300 mb-1">Street Address</label>
+                    <label className="block text-xs font-medium text-slate-300 mb-1">City / Region</label>
                     <input
                       type="text"
-                      value={profileAddress}
-                      onChange={(e) => setProfileAddress(e.target.value)}
+                      value={profileCity}
+                      onChange={(e) => setProfileCity(e.target.value)}
                       className="w-full bg-slate-950 border border-slate-700 rounded-xl px-3 py-2 text-xs text-white"
                     />
                   </div>
 
-                  <div className="grid grid-cols-3 gap-3">
-                    <div>
-                      <label className="block text-xs font-medium text-slate-300 mb-1">GSTIN</label>
-                      <input
-                        type="text"
-                        placeholder="37ABCDE1234F1Z5"
-                        value={profileGstin}
-                        onChange={(e) => setProfileGstin(e.target.value)}
-                        className="w-full bg-slate-950 border border-slate-700 rounded-xl px-3 py-2 text-xs text-white font-mono"
-                      />
-                    </div>
-                    <div>
-                      <label className="block text-xs font-medium text-slate-300 mb-1">Service Charge %</label>
-                      <input
-                        type="number"
-                        min={0}
-                        max={20}
-                        value={profileServiceCharge}
-                        onChange={(e) => setProfileServiceCharge(Number(e.target.value))}
-                        className="w-full bg-slate-950 border border-slate-700 rounded-xl px-3 py-2 text-xs text-white font-mono"
-                      />
-                    </div>
-                    <div>
-                      <label className="block text-xs font-medium text-slate-300 mb-1">GST %</label>
-                      <input
-                        type="number"
-                        min={0}
-                        max={28}
-                        value={profileGst}
-                        onChange={(e) => setProfileGst(Number(e.target.value))}
-                        className="w-full bg-slate-950 border border-slate-700 rounded-xl px-3 py-2 text-xs text-white font-mono"
-                      />
-                    </div>
-                  </div>
-
-                  {/* Brand Color Picker */}
                   <div>
-                    <label className="block text-xs font-medium text-slate-300 mb-1.5">Brand Accent Color</label>
-                    <div className="flex items-center gap-3">
-                      {[
-                        { name: "Royal Gold", color: "#D4AF37" },
-                        { name: "Emerald", color: "#10B981" },
-                        { name: "Amber", color: "#F59E0B" },
-                        { name: "Royal Blue", color: "#3B82F6" },
-                        { name: "Ruby Crimson", color: "#EF4444" },
-                        { name: "Purple", color: "#8B5CF6" },
-                      ].map((pal) => (
-                        <button
-                          key={pal.color}
-                          type="button"
-                          onClick={() => setProfileBrandColor(pal.color)}
-                          title={pal.name}
-                          className={`w-7 h-7 rounded-xl transition cursor-pointer flex items-center justify-center ${
-                            profileBrandColor === pal.color
-                              ? "ring-2 ring-white scale-110 shadow-lg"
-                              : "opacity-75 hover:opacity-100"
-                          }`}
-                          style={{ backgroundColor: pal.color }}
-                        >
-                          {profileBrandColor === pal.color && <Check className="w-3.5 h-3.5 text-slate-950" />}
-                        </button>
-                      ))}
-                      <span className="font-mono text-xs text-slate-400 ml-2">{profileBrandColor}</span>
-                    </div>
+                    <label className="block text-xs font-medium text-slate-300 mb-1">GSTIN / Tax ID</label>
+                    <input
+                      type="text"
+                      placeholder="37ABCDE1234F1Z5"
+                      value={profileGstin}
+                      onChange={(e) => setProfileGstin(e.target.value)}
+                      className="w-full bg-slate-950 border border-slate-700 rounded-xl px-3 py-2 text-xs text-white font-mono uppercase"
+                    />
+                  </div>
+                </div>
+
+                <div>
+                  <label className="block text-xs font-medium text-slate-300 mb-1">Full Street Address</label>
+                  <input
+                    type="text"
+                    value={profileAddress}
+                    onChange={(e) => setProfileAddress(e.target.value)}
+                    className="w-full bg-slate-950 border border-slate-700 rounded-xl px-3 py-2 text-xs text-white"
+                  />
+                </div>
+
+                <div className="grid grid-cols-2 gap-4">
+                  <div>
+                    <label className="block text-xs font-medium text-slate-300 mb-1">Service Charge %</label>
+                    <input
+                      type="number"
+                      min={0}
+                      max={20}
+                      value={profileServiceCharge}
+                      onChange={(e) => setProfileServiceCharge(Number(e.target.value))}
+                      className="w-full bg-slate-950 border border-slate-700 rounded-xl px-3 py-2 text-xs text-white font-mono"
+                    />
                   </div>
 
-                  <button
-                    type="submit"
-                    className="w-full py-2.5 rounded-xl bg-emerald-500 hover:bg-emerald-400 text-slate-950 text-xs font-bold transition flex items-center justify-center gap-2 shadow-lg shadow-emerald-500/20 cursor-pointer"
-                  >
-                    <Check className="w-4 h-4" />
-                    Save Profile & Branding
-                  </button>
-                </form>
-              </div>
+                  <div>
+                    <label className="block text-xs font-medium text-slate-300 mb-1">GST %</label>
+                    <input
+                      type="number"
+                      min={0}
+                      max={28}
+                      value={profileGst}
+                      onChange={(e) => setProfileGst(Number(e.target.value))}
+                      className="w-full bg-slate-950 border border-slate-700 rounded-xl px-3 py-2 text-xs text-white font-mono"
+                    />
+                  </div>
+                </div>
+
+                <button
+                  type="submit"
+                  className="w-full py-2.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-white font-bold text-xs transition flex items-center justify-center gap-2 cursor-pointer border border-slate-700"
+                >
+                  <Check className="w-4 h-4" />
+                  Save Restaurant Profile Details
+                </button>
+              </form>
             </div>
           </div>
         )}
