@@ -30,6 +30,16 @@ if (!globalThis.__clouddining_orders) {
   globalThis.__clouddining_orders = [];
 }
 
+const CORS_HEADERS = {
+  "Access-Control-Allow-Origin": "*",
+  "Access-Control-Allow-Methods": "GET, POST, PATCH, OPTIONS",
+  "Access-Control-Allow-Headers": "Content-Type, Authorization",
+};
+
+export async function OPTIONS() {
+  return NextResponse.json({}, { headers: CORS_HEADERS });
+}
+
 export async function GET(request: Request) {
   const { searchParams } = new URL(request.url);
   const restaurantId = searchParams.get("restaurant_id");
@@ -45,12 +55,15 @@ export async function GET(request: Request) {
     filtered = filtered.filter((o) => o.timestamp > since);
   }
 
-  return NextResponse.json({
-    success: true,
-    orders: filtered,
-    total_count: (globalThis.__clouddining_orders || []).length,
-    server_time: Date.now(),
-  });
+  return NextResponse.json(
+    {
+      success: true,
+      orders: filtered,
+      total_count: (globalThis.__clouddining_orders || []).length,
+      server_time: Date.now(),
+    },
+    { headers: CORS_HEADERS }
+  );
 }
 
 export async function POST(request: Request) {
@@ -161,15 +174,18 @@ export async function POST(request: Request) {
       console.warn("Supabase background attempt failed:", sbErr);
     }
 
-    return NextResponse.json({
-      success: true,
-      order: newOrder,
-    });
+    return NextResponse.json(
+      {
+        success: true,
+        order: newOrder,
+      },
+      { headers: CORS_HEADERS }
+    );
   } catch (error: any) {
     console.error("Failed to process order:", error);
     return NextResponse.json(
       { success: false, error: error?.message || "Internal server error" },
-      { status: 500 }
+      { status: 500, headers: CORS_HEADERS }
     );
   }
 }
@@ -180,7 +196,7 @@ export async function PATCH(request: Request) {
     if (!order_id || !status) {
       return NextResponse.json(
         { success: false, error: "Missing order_id or status" },
-        { status: 400 }
+        { status: 400, headers: CORS_HEADERS }
       );
     }
 
@@ -190,11 +206,11 @@ export async function PATCH(request: Request) {
       );
     }
 
-    return NextResponse.json({ success: true, order_id, status });
+    return NextResponse.json({ success: true, order_id, status }, { headers: CORS_HEADERS });
   } catch (e: any) {
     return NextResponse.json(
       { success: false, error: e?.message || "Failed to update order" },
-      { status: 500 }
+      { status: 500, headers: CORS_HEADERS }
     );
   }
 }
