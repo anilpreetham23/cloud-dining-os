@@ -30,13 +30,49 @@ export default function UniversalLoginPage() {
   const [password, setPassword] = useState("");
   const [showPassword, setShowPassword] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [emailError, setEmailError] = useState<string | null>(null);
+  const [passwordError, setPasswordError] = useState<string | null>(null);
+  const [capsLockOn, setCapsLockOn] = useState(false);
   const [loading, setLoading] = useState(false);
   const [showCheatSheet, setShowCheatSheet] = useState(false);
 
+  const checkCapsLock = (e: React.KeyboardEvent<HTMLInputElement>) => {
+    if (e.getModifierState) {
+      setCapsLockOn(e.getModifierState("CapsLock"));
+    }
+  };
+
   const handleLogin = (e: React.FormEvent) => {
     e.preventDefault();
-    setLoading(true);
     setError(null);
+    setEmailError(null);
+    setPasswordError(null);
+
+    let hasValidationError = false;
+    const cleanEmail = email.trim();
+    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+
+    // 1. Email Format Validation
+    if (!cleanEmail) {
+      setEmailError("Email address is required.");
+      hasValidationError = true;
+    } else if (!emailRegex.test(cleanEmail)) {
+      setEmailError("Please enter a valid email format (e.g. kurnool@sridivya.com).");
+      hasValidationError = true;
+    }
+
+    // 2. Password Validation
+    if (!password) {
+      setPasswordError("Password is required.");
+      hasValidationError = true;
+    } else if (password.length < 6) {
+      setPasswordError("Password must be at least 6 characters.");
+      hasValidationError = true;
+    }
+
+    if (hasValidationError) return;
+
+    setLoading(true);
 
     setTimeout(() => {
       const res = authenticateUser(email, password);
@@ -58,6 +94,8 @@ export default function UniversalLoginPage() {
     setEmail(demoEmail);
     setPassword(demoPass);
     setError(null);
+    setEmailError(null);
+    setPasswordError(null);
   };
 
   return (
@@ -118,7 +156,7 @@ export default function UniversalLoginPage() {
             </div>
           )}
 
-          <form onSubmit={handleLogin} className="space-y-5">
+          <form onSubmit={handleLogin} noValidate className="space-y-5">
             <div>
               <label className="block text-xs font-medium text-slate-300 mb-1.5 uppercase tracking-wider">
                 Email Address / Username
@@ -127,28 +165,53 @@ export default function UniversalLoginPage() {
                 <Mail className="w-4 h-4 text-slate-400 absolute left-3.5 top-1/2 -translate-y-1/2" />
                 <input
                   type="email"
-                  required
                   value={email}
-                  onChange={(e) => setEmail(e.target.value)}
+                  onChange={(e) => {
+                    setEmail(e.target.value);
+                    if (emailError) setEmailError(null);
+                  }}
                   placeholder="e.g. kurnool@sridivya.com or bobby@clouddining.com"
-                  className="w-full bg-slate-950 border border-slate-700/80 rounded-xl pl-10 pr-4 py-2.5 text-sm text-white placeholder-slate-500 focus:outline-none focus:border-amber-400/70 focus:ring-1 focus:ring-amber-400/70 transition"
+                  className={`w-full bg-slate-950 border rounded-xl pl-10 pr-4 py-2.5 text-sm text-white placeholder-slate-500 focus:outline-none transition ${
+                    emailError
+                      ? "border-red-500 focus:border-red-500 ring-1 ring-red-500/50"
+                      : "border-slate-700/80 focus:border-amber-400/70 focus:ring-1 focus:ring-amber-400/70"
+                  }`}
                 />
               </div>
+              {emailError && (
+                <p className="text-[11px] text-red-400 mt-1.5 flex items-center gap-1">
+                  <AlertCircle className="w-3.5 h-3.5 shrink-0" />
+                  <span>{emailError}</span>
+                </p>
+              )}
             </div>
 
             <div>
-              <label className="block text-xs font-medium text-slate-300 mb-1.5 uppercase tracking-wider">
-                Password / Security Key
-              </label>
+              <div className="flex items-center justify-between mb-1.5">
+                <label className="block text-xs font-medium text-slate-300 uppercase tracking-wider">
+                  Password / Security Key
+                </label>
+                <span className="text-[10px] text-slate-400 font-mono">
+                  Case-sensitive
+                </span>
+              </div>
               <div className="relative">
                 <Lock className="w-4 h-4 text-slate-400 absolute left-3.5 top-1/2 -translate-y-1/2" />
                 <input
                   type={showPassword ? "text" : "password"}
-                  required
                   value={password}
-                  onChange={(e) => setPassword(e.target.value)}
+                  onKeyDown={checkCapsLock}
+                  onKeyUp={checkCapsLock}
+                  onChange={(e) => {
+                    setPassword(e.target.value);
+                    if (passwordError) setPasswordError(null);
+                  }}
                   placeholder="Enter your assigned password"
-                  className="w-full bg-slate-950 border border-slate-700/80 rounded-xl pl-10 pr-11 py-2.5 text-sm text-white placeholder-slate-500 focus:outline-none focus:border-amber-400/70 focus:ring-1 focus:ring-amber-400/70 transition"
+                  className={`w-full bg-slate-950 border rounded-xl pl-10 pr-11 py-2.5 text-sm text-white placeholder-slate-500 focus:outline-none transition ${
+                    passwordError
+                      ? "border-red-500 focus:border-red-500 ring-1 ring-red-500/50"
+                      : "border-slate-700/80 focus:border-amber-400/70 focus:ring-1 focus:ring-amber-400/70"
+                  }`}
                 />
                 {/* Eye Mask Toggle Button */}
                 <button
@@ -160,6 +223,20 @@ export default function UniversalLoginPage() {
                   {showPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
                 </button>
               </div>
+
+              {passwordError && (
+                <p className="text-[11px] text-red-400 mt-1.5 flex items-center gap-1">
+                  <AlertCircle className="w-3.5 h-3.5 shrink-0" />
+                  <span>{passwordError}</span>
+                </p>
+              )}
+
+              {capsLockOn && (
+                <p className="text-[11px] text-amber-300 mt-1.5 flex items-center gap-1 bg-amber-400/10 px-2.5 py-1 rounded-lg border border-amber-400/20">
+                  <AlertCircle className="w-3.5 h-3.5 shrink-0 text-amber-400" />
+                  <span>⚠️ Caps Lock is ON — Passwords are case-sensitive.</span>
+                </p>
+              )}
             </div>
 
             <div className="pt-2">
